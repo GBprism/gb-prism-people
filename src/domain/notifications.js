@@ -57,7 +57,10 @@ export function planReminders(db, actor, { cycleId, asOf = todayIn(), queue = fa
         if (asOf >= late) push('overdue', p.user_id);
       }
     }
-    if (p.state === 'manager_review') push('manager_review', p.reviewer_id);
+    if (p.state === 'manager_review') {
+      push('manager_review', p.reviewer_id);
+      for (const r of db.prepare('SELECT DISTINCT user_id FROM plan_category_reviewers WHERE plan_id = ? AND user_id != ?').all(p.id, p.reviewer_id || '')) push('manager_review', r.user_id);
+    }
     if (p.state === 'partner_calibration') push('calibration', p.partner_id);
     if (p.state === 'released') push('release', p.user_id);
     if (p.state === 'draft_plan' && cycle.status === 'planning') push('goal_approval', p.reviewer_id);

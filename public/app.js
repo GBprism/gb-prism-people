@@ -115,6 +115,7 @@ async function review(id) {
   const v = await api(`/api/plans/${id}`);
   const a = v.access;
   if (a.relation === 'project_lead') return leadFeedback(v);
+  if (a.relation === 'input') return inputPage(v);
   const root = h('div', {});
   const saveState = h('span', { class: 'savestate', 'aria-live': 'polite' });
   const editSelf = a.relation === 'self' && ['approved_plan', 'self_assessment'].includes(v.state);
@@ -142,6 +143,7 @@ async function review(id) {
   if (v.scoring_status !== 'approved' && v.scoring_status !== 'historical') root.append(h('p', { class: 'small muted' }, 'Rating scale and thresholds are candidates awaiting GB approval.'));
   if (editSelf && v.cycle.self_due) root.append(h('p', {}, `Please complete by ${fmtDate(v.cycle.self_due)} (Amman time). Changes save automatically.`));
 
+  if (v.category_reviewers?.length) root.append(h('p', { class: 'small' }, 'Section reviewers: ', v.category_reviewers.map((r) => `${CAT[r.category]} — ${r.name}`).join(' · '), ` · Lead reviewer: ${v.reviewer?.name || '—'}`));
   // weights summary
   root.append(h('p', { class: 'small' }, 'Weights: ', Object.entries(v.category_weights).filter(([, w]) => w).map(([c, w]) => `${CAT[c]} ${w}%`).join(' · ')));
 
@@ -150,7 +152,7 @@ async function review(id) {
     const its = v.items.filter((i) => i.category === cat);
     if (!its.length) continue;
     root.append(h('h2', {}, `${CAT[cat]}${v.category_weights[cat] ? ` · ${v.category_weights[cat]}%` : ''}`));
-    for (const it of its) root.append(itemCard(v, it, { editSelf, editMgr, calib, setItem, id }));
+    for (const it of its) root.append(itemCard(v, it, { editSelf, editMgr: editMgr && (!a.editCategories || a.editCategories.includes(it.category)), calib, setItem, id }));
   }
 
   // projects & evidence
@@ -158,6 +160,14 @@ async function review(id) {
     h('ul', {}, v.projects.map((p) => h('li', {}, `${p.name} (${p.kind}) — ${p.role}`, a.relation === 'reviewer' && !['released', 'acknowledged', 'closed'].includes(v.state) ? h('button', { class: 'btn small ml', onclick: () => act(() => api(`/api/plans/${id}/feedback-invite`, { method: 'POST', body: { assignmentId: p.assignment_id } }), 'Project lead invited') }, 'Ask lead for feedback') : null))),
     editSelf ? h('div', {}, h('label', { for: 'projconf' }, 'Confirm your projects and what you personally owned or contributed'), h('textarea', { id: 'projconf', oninput: (e) => setSummary('projects', e.target.value) }, v.summary.self?.projects || '')) : null));
   if (v.project_feedback?.length) root.append(h('section', { class: 'card' }, h('h2', {}, 'Project lead feedback'), v.project_feedback.map((f) => h('div', { class: 'side' }, h('strong', {}, `${f.author} on ${f.project}`), h('p', {}, f.body), f.evidence_url ? h('a', { href: f.evidence_url, rel: 'noopener', target: '_blank' }, 'Evidence') : null))));
+  if (v.inputs || v.input_invites) {
+    const people = a.relation === 'reviewer' && !['released', 'acknowledged', 'closed'].includes(v.state) ? await api('/api/people') : [];
+    const who = h('select', { 'aria-label': 'Invite' }, h('option', { value: '' }, '— invite someone for input —'), people.filter((p) => p.id !== v.employee.id).map((p) => h('option', { value: p.id }, p.name)));
+    root.append(h('section', { class: 'card' }, h('h2', {}, 'Input from project seniors'),
+      v.input_invites?.length ? h('p', { class: 'small' }, v.input_invites.map((i) => `${i.name} (${i.label}) ${i.given ? '✓' : '— waiting'}`).join(' · ')) : null,
+      (v.inputs || []).map((i) => h('div', { class: 'side' }, h('strong', {}, `${i.author} — ${i.label}`), h('p', {}, i.body), i.evidence_url ? h('a', { href: i.evidence_url, target: '_blank', rel: 'noopener' }, 'Evidence') : null)),
+      people.length ? h('div', { class: 'row mt' }, who, h('button', { class: 'btn', onclick: () => act(() => api(`/api/plans/${id}/input-invites`, { method: 'POST', body: { inviteeId: who.value, label: 'Project feedback' } }), 'Invitation added').then(render) }, 'Invite')) : null));
+  }
   if (v.discrepancies?.length) root.append(h('div', { class: 'alert warn' }, h('strong', {}, 'Self vs manager differences of 1 point or more: '), v.discrepancies.map((d) => `${d.title} (${d.self} vs ${d.manager})`).join('; '), '. Check evidence with project leads before finalising.'));
 
   // self summary
@@ -169,7 +179,8 @@ async function review(id) {
   }
   if (a.viewManager && a.relation !== 'self') {
     const s = v.summary.manager || {};
-    const f = (k, label, list) => h('div', {}, h('label', { for: `m_${k}` }, label), editMgr ? h('textarea', { id: `m_${k}`, oninput: (e) => setSummary(k, list ? e.target.value.split('\n').filter(Boolean) : e.target.value) }, list ? (s[k] || []).join('\n') : s[k] || '') : h('p', {}, (list ? (s[k] || []).join('; ') : s[k]) || '—'));
+    const leadEdit = editMgr && a.relation === 'reviewer';
+    const f = (k, label, list) => h('div', {}, h('label', { for: `m_${k}` }, label), leadEdit ? h('textarea', { id: `m_${k}`, oninput: (e) => setSummary(k, list ? e.target.value.split('\n').filter(Boolean) : e.target.value) }, list ? (s[k] || []).join('\n') : s[k] || '') : h('p', {}, (list ? (s[k] || []).join('; ') : s[k]) || '—'));
     root.append(h('section', { class: 'card' }, h('h2', {}, 'Manager summary'), f('strengths', 'One or two supported strengths (one per line)', true), f('gaps', 'One or two gaps or open questions (one per line)', true), f('next_action', 'Measurable next action'), f('evidence_checked_with', 'Evidence checked with (project leads)')));
   }
 
@@ -198,7 +209,8 @@ async function review(id) {
   const go = (label, fn, cls = '') => bar.append(h('button', { class: `btn ${cls}`, onclick: async () => { await flush(); await act(fn, `${label}: done`); render(); } }, label));
   if (editSelf) go('Submit self-assessment', () => api(`/api/plans/${id}/self/submit`, { method: 'POST' }), 'primary');
   if (a.relation === 'self' && ['approved_plan', 'self_assessment'].includes(v.state)) go('Ask for clarification', () => api(`/api/plans/${id}/clarifications`, { method: 'POST', body: { question: reasonPrompt('What needs clarifying (e.g. a target or project attribution)?') } }));
-  if (editMgr) { go('Submit to partner calibration', () => api(`/api/plans/${id}/manager/submit`, { method: 'POST' }), 'primary'); go('Return to employee', () => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: reasonPrompt('Why are you returning it?') } })); }
+  if (editMgr && a.relation === 'category_reviewer') bar.append(h('span', { class: 'small muted' }, `Your ratings save automatically. ${v.reviewer?.name || 'The lead reviewer'} submits the review once every section is rated.`));
+  if (editMgr && a.relation === 'reviewer') { go('Submit to partner calibration', () => api(`/api/plans/${id}/manager/submit`, { method: 'POST' }), 'primary'); go('Return to employee', () => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: reasonPrompt('Why are you returning it?') } })); }
   if (calib) { go('Release result', () => api(`/api/plans/${id}/release`, { method: 'POST', body: { note: 'Calibrated' } }), 'primary'); go('Return to manager', () => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: reasonPrompt('Why are you returning it?') } })); }
   if (a.relation === 'self' && v.state === 'released') go('Acknowledge receipt', () => api(`/api/plans/${id}/acknowledge`, { method: 'POST', body: { comment: prompt('Optional comment (acknowledging receipt is not agreement):') || null } }), 'primary');
   if (a.relation === 'reviewer' && v.state === 'acknowledged') go('Close review', () => api(`/api/plans/${id}/close`, { method: 'POST' }), 'primary');
@@ -269,6 +281,14 @@ function draftEditor(v) {
     h('button', { class: 'btn', onclick: () => act(() => api(`/api/plans/${v.id}/draft`, { method: 'POST', body: { upsertItems: [{ category: newCat.value, title: newTitle.value }] } }), 'Item added').then(render) }, 'Add item'),
     h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/plans/${v.id}/draft`, { method: 'POST', body: { categoryWeights: cw, upsertItems: Object.values(edits) } }), 'Draft saved').then(render) }, 'Save draft')));
   return box;
+}
+
+function inputPage(v) {
+  const body = h('textarea', { id: 'inp_body' }); const ev = h('input', { type: 'url', id: 'inp_ev', placeholder: 'Drive link to a deliverable (optional)' });
+  return h('div', {}, h('h1', {}, `${v.label}: ${v.employee.name}`), h('p', { class: 'muted' }, 'You were asked for input on the projects you led with this person. You cannot see their ratings or anyone else\'s input.'),
+    h('section', { class: 'card' }, h('label', { for: 'inp_body' }, 'What did they deliver, how good was it, and what should they work on next?'), body, h('label', { for: 'inp_ev' }, 'Evidence'), ev,
+      h('button', { class: 'btn primary mt', onclick: () => act(() => api(`/api/plans/${v.id}/inputs`, { method: 'POST', body: { body: body.value, evidenceUrl: ev.value || null } }), 'Input sent').then(render) }, 'Send input')),
+    v.myInputs.length ? h('section', { class: 'card' }, h('h2', {}, 'Your input so far'), v.myInputs.map((i) => h('p', {}, i.body))) : null);
 }
 
 function leadFeedback(v) {

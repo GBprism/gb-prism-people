@@ -242,6 +242,7 @@ export function saveManager(db, actor, planId, { items: edits = [], summary }) {
     for (const e of edits) {
       const it = db.prepare('SELECT * FROM plan_items WHERE id = ? AND plan_id = ?').get(e.id, planId);
       if (!it) throw notFound('Item not found');
+      if (c.editCategories && !c.editCategories.includes(it.category)) throw forbid(`Another reviewer rates the ${it.category} items`);
       if (e.manager_rating != null && !validRating(Number(e.manager_rating), cfg.scale)) throw bad(`Rating must be ${cfg.scale.min}–${cfg.scale.max}`);
       db.prepare('UPDATE plan_items SET manager_rating = ?, manager_rationale = ? WHERE id = ?').run(
         e.manager_rating !== undefined ? (e.manager_rating === null ? null : Number(e.manager_rating)) : it.manager_rating,
@@ -253,6 +254,7 @@ export function saveManager(db, actor, planId, { items: edits = [], summary }) {
       }
     }
     if (summary) {
+      if (c.relation !== 'reviewer') throw forbid('The lead reviewer writes the review summary');
       const cur = P(plan.summary_json, {});
       cur.manager = { ...(cur.manager || {}), ...pick(summary, ['strengths', 'gaps', 'next_action', 'discrepancy_notes', 'evidence_checked_with']) };
       db.prepare('UPDATE plans SET summary_json = ? WHERE id = ?').run(J(cur), planId);
@@ -267,7 +269,7 @@ export function approveNa(db, actor, planId, itemId) {
   return tx(db, () => {
     const plan = getPlan(db, planId);
     const c = assertPlan(db, actor, plan, 'viewPlan');
-    if (!['reviewer', 'partner'].includes(c.relation)) throw forbid();
+    if (!['reviewer', 'partner', 'category_reviewer'].includes(c.relation)) throw forbid();
     const it = db.prepare('SELECT * FROM plan_items WHERE id = ? AND plan_id = ? AND na = 1').get(itemId, planId);
     if (!it) throw notFound('No N/A proposal on this item');
     if (!it.na_reason) throw bad('N/A needs a reason before approval');
@@ -291,7 +293,8 @@ export function returnPlan(db, actor, planId, { reason }) {
 export function submitManager(db, actor, planId) {
   return tx(db, () => {
     const plan = getPlan(db, planId);
-    assertPlan(db, actor, plan, 'editManager');
+    const c = assertPlan(db, actor, plan, 'editManager');
+    if (c.relation !== 'reviewer') throw forbid('The lead reviewer submits the review once every section is rated');
     const { cfg } = cycleCfg(db, plan.cycle_id);
     const its = items(db, planId);
     const res = computeScore({ categoryWeights: P(plan.category_weights_json), items: its, config: cfg, field: 'manager_rating' });
@@ -459,6 +462,10 @@ export function planView(db, actor, planId) {
   const c = planAccess(db, actor, plan);
   if (!c) throw forbid();
   const emp = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(plan.user_id);
+  if (c.relation === 'input') {
+    const mine = db.prepare('SELECT * FROM plan_inputs WHERE plan_id = ? AND author_id = ? ORDER BY created_at').all(planId, actor.id);
+    return { id: plan.id, employee: emp, access: c, label: c.giveInput, myInputs: mine };
+  }
   if (c.relation === 'project_lead') {
     const asg = db.prepare(`SELECT pa.id, pa.role, p.name project FROM project_assignments pa JOIN projects p ON p.id = pa.project_id WHERE pa.id IN (${c.giveFeedback.map(() => '?').join(',')})`).all(...c.giveFeedback);
     const mine = db.prepare('SELECT * FROM project_feedback WHERE plan_id = ? AND author_id = ?').all(planId, actor.id);
@@ -487,6 +494,11 @@ export function planView(db, actor, planId) {
     development_actions: db.prepare('SELECT * FROM development_actions WHERE plan_id = ?').all(planId),
     check_ins: db.prepare('SELECT * FROM check_ins WHERE plan_id = ? ORDER BY held_on').all(planId),
   };
+  view.category_reviewers = db.prepare('SELECT r.category, u.id, u.name FROM plan_category_reviewers r JOIN users u ON u.id = r.user_id WHERE r.plan_id = ?').all(planId);
+  if (c.viewProjectFeedback) {
+    view.inputs = db.prepare('SELECT i.label, i.body, i.evidence_url, i.created_at, u.name author FROM plan_inputs i JOIN users u ON u.id = i.author_id WHERE i.plan_id = ? ORDER BY i.created_at').all(planId);
+    view.input_invites = db.prepare('SELECT i.label, u.name, EXISTS(SELECT 1 FROM plan_inputs x WHERE x.plan_id = i.plan_id AND x.author_id = i.invitee_id) given FROM plan_input_invites i JOIN users u ON u.id = i.invitee_id WHERE i.plan_id = ?').all(planId);
+  }
   if (c.viewProjectFeedback) view.project_feedback = db.prepare(`SELECT f.*, u.name author, p.name project FROM project_feedback f JOIN users u ON u.id = f.author_id
       JOIN project_assignments pa ON pa.id = f.assignment_id JOIN projects p ON p.id = pa.project_id WHERE f.plan_id = ?`).all(planId);
   if (c.relation === 'self' || c.relation === 'reviewer' || c.relation === 'partner') {
@@ -511,3 +523,51 @@ export function planView(db, actor, planId) {
 
 const userName = (db, id) => (id ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(id) : null);
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+
+// ------------------------------------------------------- split reviews ----
+/** People Ops or the lead reviewer assigns who rates a category (e.g. objectives → technical partner). */
+export function setCategoryReviewer(db, actor, planId, { category, userId }) {
+  return tx(db, () => {
+    const plan = getPlan(db, planId);
+    if (plan.tenant_id !== actor.tenantId) throw forbid();
+    const c = planAccess(db, actor, plan);
+    if (!isOps(actor) && c?.relation !== 'reviewer') throw forbid();
+    if (!['objective', 'competency', 'initiative'].includes(category)) throw bad('Unknown category');
+    if (['partner_calibration', 'released', 'acknowledged', 'closed'].includes(plan.state)) throw conflict('Reviewers cannot change after the manager review');
+    if (userId === plan.user_id) throw bad('An employee cannot rate their own review');
+    assertTenantUsers(db, actor, userId);
+    if (!userId || userId === plan.reviewer_id) db.prepare('DELETE FROM plan_category_reviewers WHERE plan_id = ? AND category = ?').run(planId, category);
+    else db.prepare('INSERT INTO plan_category_reviewers (plan_id, category, user_id, assigned_by, assigned_at) VALUES (?,?,?,?,?) ON CONFLICT(plan_id, category) DO UPDATE SET user_id = excluded.user_id, assigned_by = excluded.assigned_by, assigned_at = excluded.assigned_at')
+      .run(planId, category, userId, actor.id, now());
+    audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.category_reviewer', entity: 'plan', entityId: planId, after: { category, userId } });
+    return true;
+  });
+}
+
+/** Invite someone (e.g. the senior who led the person's projects) to give written input. */
+export function inviteInput(db, actor, planId, { inviteeId, label }) {
+  return tx(db, () => {
+    const plan = getPlan(db, planId);
+    if (plan.tenant_id !== actor.tenantId) throw forbid();
+    const c = planAccess(db, actor, plan);
+    if (!isOps(actor) && c?.relation !== 'reviewer') throw forbid();
+    assertTenantUsers(db, actor, inviteeId);
+    if (inviteeId === plan.user_id) throw bad('The employee cannot give input on their own review');
+    db.prepare('INSERT OR IGNORE INTO plan_input_invites (id, plan_id, invitee_id, label, invited_by, created_at) VALUES (?,?,?,?,?,?)').run(uid('pii_'), planId, inviteeId, label || 'Project feedback', actor.id, now());
+    audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.input_invite', entity: 'plan', entityId: planId, after: { inviteeId, label } });
+    return true;
+  });
+}
+
+export function addInput(db, actor, planId, { body, evidenceUrl }) {
+  return tx(db, () => {
+    const plan = getPlan(db, planId);
+    const c = planAccess(db, actor, plan);
+    if (c?.relation !== 'input') throw forbid('You were not invited to give input on this review');
+    if (!String(body || '').trim()) throw bad('Input is empty');
+    const id = uid('inp_');
+    db.prepare('INSERT INTO plan_inputs (id, tenant_id, plan_id, author_id, label, body, evidence_url, created_at) VALUES (?,?,?,?,?,?,?,?)').run(id, plan.tenant_id, planId, actor.id, c.giveInput, body, evidenceUrl ?? null, now());
+    audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.input', entity: 'plan', entityId: planId });
+    return id;
+  });
+}

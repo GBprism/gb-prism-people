@@ -65,16 +65,25 @@ export function planAccess(db, actor, plan) {
       viewManager: EMPLOYEE_OUTCOME_STATES.has(plan.state) });
     return caps;
   }
+  const catRows = db.prepare('SELECT category, user_id FROM plan_category_reviewers WHERE plan_id = ?').all(plan.id);
+  const selfSeen = !['draft_plan', 'approved_plan', 'self_assessment'].includes(plan.state) || !!plan.self_submitted_at;
   if (plan.reviewer_id === actor.id) {
-    Object.assign(caps, { relation: 'reviewer', viewPlan: true, viewManager: true, viewProjectFeedback: true,
-      // manager sees the self-assessment once submitted (or plan returned)
-      viewSelf: !['draft_plan', 'approved_plan', 'self_assessment'].includes(plan.state) || !!plan.self_submitted_at,
-      editManager: plan.state === 'manager_review', viewOutcome: true, viewCalibration: PARTNER_STATES.has(plan.state) });
+    // lead reviewer: approves the plan, rates categories that have no dedicated reviewer, submits, holds the 1:1
+    const assignedToOthers = catRows.filter((r) => r.user_id !== actor.id).map((r) => r.category);
+    Object.assign(caps, { relation: 'reviewer', viewPlan: true, viewManager: true, viewProjectFeedback: true, viewSelf: selfSeen,
+      editManager: plan.state === 'manager_review', editCategories: ['objective', 'competency', 'initiative'].filter((c) => !assignedToOthers.includes(c)),
+      viewOutcome: true, viewCalibration: PARTNER_STATES.has(plan.state) });
     return caps;
   }
   if (plan.partner_id === actor.id && has(actor, 'partner') && PARTNER_STATES.has(plan.state)) {
     Object.assign(caps, { relation: 'partner', viewPlan: true, viewSelf: true, viewManager: true, viewProjectFeedback: true,
       viewCalibration: true, viewOutcome: true, calibrate: plan.state === 'partner_calibration' });
+    return caps;
+  }
+  const mine = catRows.filter((r) => r.user_id === actor.id).map((r) => r.category);
+  if (mine.length) {
+    Object.assign(caps, { relation: 'category_reviewer', viewPlan: true, viewManager: true, viewProjectFeedback: true, viewSelf: selfSeen,
+      editManager: plan.state === 'manager_review', editCategories: mine, viewOutcome: true, viewCalibration: PARTNER_STATES.has(plan.state) });
     return caps;
   }
   if (grant(db, actor, 'reviews', plan.cycle_id)) {
@@ -88,6 +97,12 @@ export function planAccess(db, actor, plan) {
   if (invites.length && !['released', 'acknowledged', 'closed'].includes(plan.state)) {
     caps.relation = 'project_lead';
     caps.giveFeedback = invites.map((i) => i.assignment_id);
+    return caps;
+  }
+  // invited input (e.g. a senior who led the person's projects): own note only, never ratings or other input
+  const inv = db.prepare('SELECT label FROM plan_input_invites WHERE plan_id = ? AND invitee_id = ?').get(plan.id, actor.id);
+  if (inv && !['released', 'acknowledged', 'closed'].includes(plan.state)) {
+    caps.relation = 'input'; caps.giveInput = inv.label;
     return caps;
   }
   return null;
@@ -130,5 +145,6 @@ export function aiExampleAccess(db, actor, ex) {
   if (ex.status !== 'approved') return false;
   const plan = ex.linked_plan_item_id && db.prepare('SELECT p.* FROM plan_items i JOIN plans p ON p.id = i.plan_id WHERE i.id = ?').get(ex.linked_plan_item_id);
   if (plan && (plan.reviewer_id === actor.id || (plan.partner_id === actor.id && PARTNER_STATES.has(plan.state)))) return true;
+  if (plan && db.prepare('SELECT 1 FROM plan_category_reviewers WHERE plan_id = ? AND user_id = ?').get(plan.id, actor.id)) return true;
   return grant(db, actor, 'ai_evidence', null);
 }

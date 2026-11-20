@@ -180,3 +180,37 @@ test('2027 plan from role defaults with selected carry-forward; fresh targets an
   assert.equal(perf.getPlan(db, PLAN).state, 'closed');
   assert.throws(() => perf.saveSelf(db, emp, PLAN, { items: [] }), /Not allowed/);
 });
+
+test('split review: section reviewers rate only their sections, invited seniors give input only, lead submits', () => {
+  const { db, as } = fresh();
+  const emp = as(SYN.emp); const mgr = as(SYN.manager); const sara = as(SYN.senior); const leo = as(SYN.lead);
+  perf.setCategoryReviewer(db, as(SYN.ops), PLAN, { category: 'objective', userId: SYN.senior });
+  assert.throws(() => perf.setCategoryReviewer(db, as(SYN.peer), PLAN, { category: 'competency', userId: SYN.peer }), /Not permitted/);
+  perf.inviteInput(db, mgr, PLAN, { inviteeId: SYN.lead, label: 'Project feedback (primary senior)' });
+  let v = perf.planView(db, emp, PLAN);
+  perf.saveSelf(db, emp, PLAN, { items: rateAll(v.items, 'self', 4) });
+  perf.submitSelf(db, emp, PLAN);
+  const all = perf.planView(db, mgr, PLAN).items;
+  const obj = all.filter((i) => i.category === 'objective'); const rest = all.filter((i) => i.category !== 'objective');
+  assert.throws(() => perf.saveManager(db, mgr, PLAN, { items: rateAll(obj, 'manager', 3) }), /Another reviewer/);
+  assert.throws(() => perf.saveManager(db, sara, PLAN, { items: rateAll(rest, 'manager', 3) }), /Another reviewer/);
+  assert.throws(() => perf.saveManager(db, sara, PLAN, { summary: { strengths: ['x'] } }), /lead reviewer/);
+  perf.saveManager(db, sara, PLAN, { items: rateAll(obj, 'manager', 5) });
+  perf.saveManager(db, mgr, PLAN, { items: rateAll(rest, 'manager', 3) });
+  const sv = perf.planView(db, sara, PLAN);
+  assert.equal(sv.access.relation, 'category_reviewer');
+  assert.equal(sv.items.find((i) => i.category === 'objective').self_rating, 4); // sees the self-assessment after submission
+  // invited senior: own note only
+  const lv = perf.planView(db, leo, PLAN);
+  assert.equal(lv.access.relation, 'input');
+  assert.equal(lv.items, undefined);
+  perf.addInput(db, leo, PLAN, { body: 'Strong analysis on Alpha; needs to own client calls' });
+  assert.throws(() => perf.addInput(db, as(SYN.peer), PLAN, { body: 'x' }), /not invited/);
+  assert.equal(perf.planView(db, mgr, PLAN).inputs.length, 1);
+  assert.equal(perf.planView(db, emp, PLAN).inputs, undefined); // employee does not see raw input
+  assert.throws(() => perf.submitManager(db, sara, PLAN), /lead reviewer/);
+  perf.submitManager(db, mgr, PLAN);
+  // consultant: objectives 40% (5) + competencies 40% (3) + initiative 20% (3) = 3.8
+  assert.equal(perf.planView(db, as(SYN.partner), PLAN).scores.manager.rounded, 3.8);
+  assert.equal(planAccess(db, as(SYN.peer), perf.getPlan(db, PLAN)), null);
+});

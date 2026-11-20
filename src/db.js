@@ -239,6 +239,17 @@ export const MIGRATIONS = [
      evidence_type TEXT NOT NULL, evidence_detail TEXT, confidence TEXT NOT NULL CHECK (confidence IN ('high','medium','low')),
      status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate','confirmed','rejected')),
      confirmed_by TEXT, confirmed_at TEXT, source TEXT NOT NULL, created_at TEXT NOT NULL);`,
+
+  // ---- 009 split reviews: per-category reviewers and invited inputs --------
+  `CREATE TABLE plan_category_reviewers (
+     plan_id TEXT NOT NULL REFERENCES plans(id), category TEXT NOT NULL CHECK (category IN ('objective','competency','initiative')),
+     user_id TEXT NOT NULL REFERENCES users(id), assigned_by TEXT NOT NULL, assigned_at TEXT NOT NULL, PRIMARY KEY (plan_id, category));
+   CREATE TABLE plan_input_invites (
+     id TEXT PRIMARY KEY, plan_id TEXT NOT NULL REFERENCES plans(id), invitee_id TEXT NOT NULL REFERENCES users(id),
+     label TEXT NOT NULL, invited_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(plan_id, invitee_id));
+   CREATE TABLE plan_inputs (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, plan_id TEXT NOT NULL REFERENCES plans(id), author_id TEXT NOT NULL,
+     label TEXT NOT NULL, body TEXT NOT NULL, evidence_url TEXT, created_at TEXT NOT NULL);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

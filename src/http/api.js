@@ -67,6 +67,12 @@ export function buildApi(db) {
       const kind = { draft_plan: 'Approve plan', manager_review: 'Manager review', released: 'Hold 1:1 and agree actions', acknowledged: 'Close review' }[p.state];
       items.push({ type: 'review', kind, title: `${p.emp} — ${p.cycle}`, due: p.state === 'manager_review' ? p.due : null, link: `#/review/${p.id}`, state: perf.STATE_LABEL[p.state] });
     }
+    for (const p of db.prepare(`SELECT p.*, u.name emp, c.name cycle, c.manager_due due, group_concat(r.category) cats FROM plan_category_reviewers r JOIN plans p ON p.id = r.plan_id
+        JOIN users u ON u.id = p.user_id JOIN cycles c ON c.id = p.cycle_id WHERE r.user_id = ? AND p.tenant_id = ? AND p.state = 'manager_review' AND p.reviewer_id != ? GROUP BY p.id`).all(actor.id, actor.tenantId, actor.id))
+      items.push({ type: 'review', kind: `Rate ${p.cats.replace(/,/g, ' & ')}`, title: `${p.emp} — ${p.cycle}`, due: p.due, link: `#/review/${p.id}`, state: 'Manager review' });
+    for (const p of db.prepare(`SELECT p.id, u.name emp, i.label FROM plan_input_invites i JOIN plans p ON p.id = i.plan_id JOIN users u ON u.id = p.user_id
+        WHERE i.invitee_id = ? AND p.state IN ('approved_plan','self_assessment','manager_review') AND NOT EXISTS (SELECT 1 FROM plan_inputs x WHERE x.plan_id = p.id AND x.author_id = i.invitee_id)`).all(actor.id))
+      items.push({ type: 'feedback', kind: p.label, title: p.emp, link: `#/review/${p.id}`, state: 'Input requested' });
     if (has(actor, 'partner')) for (const p of db.prepare(`SELECT p.*, u.name emp, c.name cycle, c.calibration_due due FROM plans p JOIN users u ON u.id = p.user_id JOIN cycles c ON c.id = p.cycle_id
         WHERE p.tenant_id = ? AND p.partner_id = ? AND p.state = 'partner_calibration'`).all(actor.tenantId, actor.id)) items.push({ type: 'calibration', kind: 'Calibrate', title: `${p.emp} — ${p.cycle}`, due: p.due, link: `#/review/${p.id}`, state: 'Partner calibration' });
     for (const x of db.prepare("SELECT * FROM leave_requests WHERE tenant_id = ? AND state = 'submitted' AND (approver_id = ? OR backup_approver_id = ?) AND user_id != ?").all(actor.tenantId, actor.id, actor.id, actor.id)) {
@@ -112,6 +118,9 @@ export function buildApi(db) {
   r.post('/api/plans/:id/reopen', ({ actor, params, body }) => perf.reopen(db, actor, params.id, body));
   r.post('/api/plans/:id/feedback-invite', ({ actor, params, body }) => ({ invitee: perf.inviteProjectFeedback(db, actor, params.id, body.assignmentId) }));
   r.post('/api/plans/:id/feedback', ({ actor, params, body }) => ({ id: perf.addProjectFeedback(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/category-reviewers', ({ actor, params, body }) => ({ ok: perf.setCategoryReviewer(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/input-invites', ({ actor, params, body }) => ({ ok: perf.inviteInput(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/inputs', ({ actor, params, body }) => ({ id: perf.addInput(db, actor, params.id, body) }));
   r.post('/api/plans/:id/actions', ({ actor, params, body }) => ({ id: perf.addDevelopmentAction(db, actor, params.id, body) }));
   r.patch('/api/actions/:id', ({ actor, params, body }) => perf.updateDevelopmentAction(db, actor, params.id, body));
   r.post('/api/plans/:id/check-ins', ({ actor, params, body }) => ({ id: perf.addCheckIn(db, actor, params.id, body) }));

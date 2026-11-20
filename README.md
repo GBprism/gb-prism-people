@@ -73,6 +73,12 @@ LEAVEBOARD_DIR=/path/to/exports npm test
 node scripts/setup-gb.js --roster roster.csv --decisions config/private/gb-decisions.json
 ```
 
+Apply the reviewer matrix (kept in git-ignored `config/private/reviewers.csv`; columns in the script header) after plans exist:
+
+```bash
+node scripts/assign-reviewers.js --matrix config/private/reviewers.csv --cycle <cycle id>
+```
+
 Then, in **Admin → Import center**: upload the 2026 forms, the LeaveBoard exports and (optionally) the 2025 team summary; review each preview; apply; post opening balances at the agreed cutover; reconcile.
 
 ## Architecture
