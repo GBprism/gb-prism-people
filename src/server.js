@@ -29,6 +29,7 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
     try {
       if (url.pathname === '/auth/google' && googleCfg) return google.start(googleCfg, res);
       if (url.pathname === '/auth/google/callback' && googleCfg) return await google.callback(googleCfg, db, req, res, url, fetchImpl);
+      if (url.pathname === '/healthz') { db.prepare('SELECT 1').get(); return send(res, 200, { ok: true }); }
       if (url.pathname === '/api/auth/config') return send(res, 200, { google: !!googleCfg, dev: devLogin, domain: googleCfg?.domain ?? null });
       if (!url.pathname.startsWith('/api/')) return serveStatic(url.pathname, res);
       // CSRF: state-changing requests must come from our own JS
@@ -86,5 +87,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const db = openDb();
   if (process.env.DEV_LOGIN === '1') { seedSynthetic(db); seedPlans(db); }
   const port = Number(process.env.PORT || 3000);
-  createServer(db).listen(port, () => console.log(`GB Prism People & Performance on http://localhost:${port}${process.env.DEV_LOGIN === '1' ? ' (synthetic dev login)' : ''}`));
+  createServer(db).listen(port, process.env.HOST || '0.0.0.0', () => console.log(`GB Prism People & Performance on http://localhost:${port}${process.env.DEV_LOGIN === '1' ? ' (synthetic dev login)' : ''}`));
 }

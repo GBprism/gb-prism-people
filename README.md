@@ -112,4 +112,4 @@ The Prism repository was not available to this build. To merge:
 4. Point `notifications.deliver()` at the Prism mailer (the transport is a single function).
 5. Move migrations into Prism's migration tool (they are plain SQL in `src/db.js`).
 
-See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for how each acceptance check is demonstrated, and [`docs/IMPORT_FORMATS.md`](docs/IMPORT_FORMATS.md) for the import formats.
+Deployment: [`docs/DEPLOY.md`](docs/DEPLOY.md). See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for how each acceptance check is demonstrated, and [`docs/IMPORT_FORMATS.md`](docs/IMPORT_FORMATS.md) for the import formats.
