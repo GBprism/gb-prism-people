@@ -1,0 +1,380 @@
+{
+ "_source": "Derived from GB Advisory 2026 PMS role forms (Drive: PMS 2026 role folders). Role content only — no personal data. Initiative rows in the source carried 10%+10% with no titles; replaced by one placeholder at 100% of the initiatives category pending GB decision.",
+ "templates": [
+  {
+   "role_family": "consultant",
+   "title": "Consultant",
+   "weights": {
+    "objective": 40,
+    "competency": 40,
+    "initiative": 20
+   },
+   "items": [
+    {
+     "category": "objective",
+     "title": "Scope & Budget Adherence",
+     "description": "Deliver exactly what is outlined in the signed Proposal/SoW. Avoid \"Scope Drift\" by not adding unrequested analysis that wastes billable hours.",
+     "kpi": "Scope Drift Rate: Number of times a Senior must delete unrequested slides/tabs.",
+     "target": "Zero (0) instances of drifting.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "\"One-Touch\" Formatting",
+     "description": "Submit drafts that meet the GB Standard: 100% font alignment, identical margins, and strict color-coding in Sheets with no broken links.",
+     "kpi": "Hygiene Count: Average number of formatting comments left by the Senior per deliverable.",
+     "target": "< 3 comments per deliverable.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Data Integrity & Traceability",
+     "description": "Ensure every hard-coded number or factual claim has a specific, traceable primary source cited in a footnote (Client PDF, Gov Database, etc.).",
+     "kpi": "Orphan Data Rate: % of claims found during spot-checks that lack a verified primary source.",
+     "target": "0% (Zero) unverified or hallucinated data.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Operational Task Lifecycle",
+     "description": "Manage the execution pipeline. Clarify ambiguities in the first 10% of the timeline and flag immediate delays if a task exceeds its estimated hours.",
+     "kpi": "Silent Failure Incidents: Number of missed deadlines or late-stage panic moments not flagged proactively.",
+     "target": "Zero (0) uncommunicated delays.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "AI Tool Mastery",
+     "description": "Become the \"Go-To\" for a specific AI tool. Apply it to a live task and demonstrate mathematically how it saved time versus manual work.",
+     "kpi": "Live Demo Quality: Quality of presentation teaching the team how to use the tool.",
+     "target": "Score > 4/5 and 1 Live Use Case demoed.",
+     "weight": 20
+    },
+    {
+     "category": "competency",
+     "title": "Source Defense Mindset",
+     "description": "Never accept secondary data or AI outputs as absolute truth. You must be able to immediately defend the origin of any data point you include in a file.",
+     "kpi": "\"Blind Spot\" Rate: Number of times a Consultant admits data was copied/generated without checking the source.",
+     "target": "Zero (0) Blind Spots; 100% traceability.",
+     "weight": 15,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "competency",
+     "title": "Workspace Discipline",
+     "description": "Maintain digital file hygiene (Named Versions) and adhere to \"Quiet Hours\" and \"Library Voice\" in the office for discussions over 10 minutes.",
+     "kpi": "Protocol Breaches: Number of noise complaints or digital file hygiene incidents.",
+     "target": "Zero (0) Physical/Digital incidents.",
+     "weight": 15,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "competency",
+     "title": "Proactive Professionalism",
+     "description": "Continuously self-assess progress. Never force a Senior to chase you for a status update; propose a solution or revised ETA at least 48 hours in advance of a delay.",
+     "kpi": "% of Missed Deadlines without Notice.",
+     "target": "Zero (0).",
+     "weight": 20,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "competency",
+     "title": "Feedback Absorption",
+     "description": "Systematically document all feedback. Ensure 100% of comments from v1 are addressed in v2 so a Senior never repeats the same correction twice.",
+     "kpi": "Repeat Comment Rate: Number of times a Senior gives the same feedback on a revised draft.",
+     "target": "Zero (0) repeated comments per review cycle.",
+     "weight": 20,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "competency",
+     "title": "Emotional Self-Management",
+     "description": "Reflect on emotional responses during high-pressure sprints. Do not panic or complain unproductively when deadlines are tight.",
+     "kpi": "Emotional Resilience Rate: % of situations managed without emotional escalation.",
+     "target": "90% of situations managed properly.",
+     "weight": 15,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "competency",
+     "title": "Structured Problem Solving",
+     "description": "Bring solutions, not just problems. Use solid reasoning to devise and implement fixes to roadblocks rather than stopping work to wait for leadership.",
+     "kpi": "Autonomy Rate: % of daily project roadblocks solved without leadership support.",
+     "target": "90% of problems solved autonomously.",
+     "weight": 15,
+     "expected_proficiency": 2,
+     "level": "Basic"
+    },
+    {
+     "category": "initiative",
+     "title": "Internal initiative (to define)",
+     "weight": 100
+    }
+   ]
+  },
+  {
+   "role_family": "senior_consultant",
+   "title": "Senior Consultant",
+   "weights": {
+    "objective": 50,
+    "competency": 30,
+    "initiative": 20
+   },
+   "items": [
+    {
+     "category": "objective",
+     "title": "End-to-End Delivery Execution",
+     "description": "Guarantee the outcome, do not just track it. Anticipate project risks 2 weeks in advance. \"The client didn't send data\" or \"the Junior was slow\" are unacceptable excuses for missing a deadline. You must find proxy data, devise workarounds, or escalate early. You own the final delivery.",
+     "kpi": "Delivery Success Rate: % of milestones submitted to the Partner for internal review on the agreed date without requiring emergency Partner intervention.",
+     "target": "100% of internal deadlines met without emergency Partner rescues.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Analytical & Quality Gatekeeping (The Partner Shield)",
+     "description": "Own the logic and the hygiene. You are responsible for the accuracy of the work, not just the fonts. If a Junior botches a calculation, uses a flawed framework, or leaves a broken link, and you forward it to the Partner, it is your error. The Partner should only be reviewing high-level strategy.",
+     "kpi": "The \"Kickback\" Rate: Number of times a deliverable is returned by the Partner due to structural, logical, or basic hygiene errors.",
+     "target": "< 1 major kickback per deliverable. Zero (0) calculation errors reaching the Partner.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Front-Line Client Management & Pushback",
+     "description": "Stop hiding behind the Partner. You must lead the weekly status calls and manage the day-to-day client relationship. Furthermore, you must professionally push back on out-of-scope client demands (scope creep) and resolve routine friction autonomously.",
+     "kpi": "Autonomy in Client Management: % of Level 1 and Level 2 client issues or scope-creep requests resolved without Partner escalation.",
+     "target": "100% of routine client disputes handled autonomously.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Individual objective (agree with manager)",
+     "description": null,
+     "kpi": null,
+     "target": null,
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Individual objective (agree with manager)",
+     "description": null,
+     "kpi": null,
+     "target": null,
+     "weight": 20
+    },
+    {
+     "category": "competency",
+     "title": "Team Leadership & Cultural Bridge",
+     "description": "Walk the Talk. You are the bridge between Partners and Juniors. You must guide team cohesion, foster spirit, and model the GB culture. You are responsible for \"translating\" leadership's vision into Junior action without complaining or creating \"us vs. them\" toxicity.",
+     "kpi": "Junior Feedback & Culture Fit: 360-degree feedback on team spirit and cultural alignment.",
+     "target": ">4.5/5 rating. Zero (0) toxic \"venting\" incidents.",
+     "weight": 15,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "competency",
+     "title": "Client Interaction & Workshop Mastery",
+     "description": "Own the Stage. Lead the preparation and execution of meetings, interviews, and workshops. You represent the firm's brand; your interactions must be polished and outcome-oriented, ensuring 100% data capture and professional relationship management.",
+     "kpi": "Interaction Success Rate: % of client meetings that achieve 100% of planned objectives/data.",
+     "target": "95% successful interactions. (5% margin for complex unknowns).",
+     "weight": 15,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "competency",
+     "title": "Emotional Self-Management",
+     "description": "The Emotional Anchor. Manage and analyze your own stress and emotional triggers. You must stay composed under pressure to prevent \"stress-leak\" to the Juniors. This includes maintaining \"Library Voice\" and professional decorum even in high-stakes sprints.",
+     "kpi": "Resilience Incidents: Frequency of unprofessional emotional \"leaks\" or reactive behavior under pressure.",
+     "target": "90% of situations managed with professional composure.",
+     "weight": 15,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "competency",
+     "title": "Problem Solving & Strategic Mapping",
+     "description": "Do not bring \"raw\" problems to leadership. Deconstruct messy challenges into simple, logical workstreams. You are expected to bridge the gap by making the \"complex\" understandable for Juniors through structured plans/outlines.",
+     "kpi": "Autonomy Rate: % of project hurdles resolved or presented with a clear recommendation before Partner input.",
+     "target": "90% of problems solved or mitigated autonomously.",
+     "weight": 20,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "competency",
+     "title": "The Quality Gatekeeper (QA)",
+     "description": "Zero-Defect Standard. You are the final shield. Every file leaving your desk must be \"Partner-Ready.\" You must ruthlessly enforce hygiene (formatting, logic, spelling) and digital file discipline so leadership can focus on strategy, not commas.",
+     "kpi": "The \"Kickback\" Rate: Number of times a deliverable is returned for errors that should have been caught during your review.",
+     "target": "< 1 major hygiene error reaches the Partner per draft.",
+     "weight": 20,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "competency",
+     "title": "Active Coaching & Knowledge Transfer",
+     "description": "The Knowledge Multiplier. Your success is measured by the growth of your Juniors. Actively \"teach the talk\"—explaining the why behind edits. If a Junior repeats a mistake you've corrected, it is a failure of your coaching and follow-through.",
+     "kpi": "Junior Growth Rate: Tangible reduction in Junior repeat-error rates and increased autonomy on your projects.",
+     "target": "Zero (0) repeated errors from Juniors after a coaching session.",
+     "weight": 15,
+     "expected_proficiency": 3,
+     "level": "Intermediate"
+    },
+    {
+     "category": "initiative",
+     "title": "Internal initiative (to define)",
+     "weight": 100
+    }
+   ]
+  },
+  {
+   "role_family": "assistant_manager",
+   "title": "Assistant Manager",
+   "weights": {
+    "objective": 40,
+    "competency": 40,
+    "initiative": 20
+   },
+   "items": [
+    {
+     "category": "objective",
+     "title": "Project Margin & Profitability",
+     "description": "Protect Firm Resources. Deliver assigned projects within the allocated budgeted man-hours. Control \"scope creep\" strictly to prevent unbilled over-servicing of clients.",
+     "kpi": "Margin Variance: Difference between planned project budgeted hours and actual hours spent.",
+     "target": "Project delivered within +/- 5% of budgeted man-hours.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Sales & Proposal Generation",
+     "description": "Drive Firm Revenue. Generate new business by leading proposal development and securing contracts from existing or new clients.",
+     "kpi": "Conversion Support: Number of successful proposals led or Add-on leads converted to signed contracts.",
+     "target": "1 successful Add-on OR 2 qualified leads converted.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Team Pipeline Output",
+     "description": "Deliver Promotion-Ready Seniors. Tangibly level up your assigned team pod so they can operate independently and handle Senior-level execution without hand-holding.",
+     "kpi": "Succession Output: Number of assigned Seniors explicitly rated as \"Ready for Promotion.\"",
+     "target": "1 Senior officially \"Ready\" for AM per year.",
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Individual objective (agree with manager)",
+     "description": null,
+     "kpi": null,
+     "target": null,
+     "weight": 20
+    },
+    {
+     "category": "objective",
+     "title": "Individual objective (agree with manager)",
+     "description": null,
+     "kpi": null,
+     "target": null,
+     "weight": 20
+    },
+    {
+     "category": "competency",
+     "title": "Deputy Authority",
+     "description": "Act as the Firm Owner. Enforce office discipline, mandate protocol, and correct team misbehavior in real-time. Command respect and lead without needing permission when Partners are absent.",
+     "kpi": "Autonomy Index: Partner assessment of your ability to hold the floor and manage the office.",
+     "target": "100% autonomy in enforcing firm rules.",
+     "weight": 20,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "competency",
+     "title": "Commercial Acumen",
+     "description": "Think Revenue. Look for the commercial angle in client meetings. Ensure technical proposals are built to be highly profitable and strategically aligned with firm growth, not just academically correct.",
+     "kpi": "Commercial Orientation: Partner observation of your ability to pivot client needs into billable opportunities.",
+     "target": "Consistent commercial orientation in reviews.",
+     "weight": 15,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "competency",
+     "title": "Strategic Mentorship",
+     "description": "Be the Knowledge Multiplier. Move away from doing the work for your team. Coach your Seniors on how to manage their pods and why structural decisions are made.",
+     "kpi": "Coaching Effectiveness: 360-degree feedback from Seniors on your ability to unblock their high-level thinking.",
+     "target": ">4.5/5 rating from assigned Seniors.",
+     "weight": 20,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "competency",
+     "title": "Advanced Problem Solving",
+     "description": "Act as the Final Filter. Deconstruct major project roadblocks structurally before escalating them to Partners. Bring a fully baked, risk-adjusted solution to every crisis.",
+     "kpi": "Risk Mitigation Rate: % of project risks neutralized before impacting the client deadline.",
+     "target": "90% of risks caught and solved early.",
+     "weight": 15,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "competency",
+     "title": "Crisis Resilience",
+     "description": "Be the Emotional Anchor. Absorb project stress rather than passing it down to the Juniors. Maintain a calm, objective, and highly professional demeanor when deadlines are tight.",
+     "kpi": "Team Morale Score: 360-feedback regarding your ability to keep the team focused and positive during crunches.",
+     "target": "Zero (0) instances of stress-transfer to the team.",
+     "weight": 15,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "competency",
+     "title": "Firm Representation",
+     "description": "Act as the Brand Ambassador. Model the \"GB Advisory\" standard flawlessly. Your executive presence, communication, and work ethic must serve as the benchmark for everyone below you.",
+     "kpi": "Professional Audit: Client and Partner feedback on your executive polish and communication.",
+     "target": ">4.7/5 Partner/Client rating on executive presence.",
+     "weight": 15,
+     "expected_proficiency": 4,
+     "level": "Advanced"
+    },
+    {
+     "category": "initiative",
+     "title": "Internal initiative (to define)",
+     "weight": 100
+    }
+   ]
+  }
+ ],
+ "bands": [
+  {
+   "min": 4.5,
+   "label": "Outstanding Performer",
+   "persona": "The Practice Builder"
+  },
+  {
+   "min": 4,
+   "label": "Excellent Performer",
+   "persona": "The Problem Solver"
+  },
+  {
+   "min": 3,
+   "label": "Meets Performance Expectation",
+   "persona": "The Solid Manager"
+  },
+  {
+   "min": 2,
+   "label": "Partially Meets Standards of Performance",
+   "persona": "The Individual Contributor"
+  },
+  {
+   "min": 0,
+   "label": "Below Acceptable Standards of Performance",
+   "persona": "Operational Risk"
+  }
+ ]
+}

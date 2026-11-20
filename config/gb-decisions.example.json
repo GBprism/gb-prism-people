@@ -1,0 +1,14 @@
+{
+  "_readme": "Copy to config/private/gb-decisions.json (git-ignored) and fill in. The real file holds staff emails and GB decisions and must never be committed.",
+  "auth": { "mode": "google", "allowed_domain": "example.com" },
+  "partners": ["partner1@example.com", "partner2@example.com"],
+  "assessment_basis_2026": "manager_approves_each_plan",
+  "new_joiners_2025": { "emails": ["joiner@example.com"], "basis": "Assessed on the Consultant template with targets agreed with the reviewer.", "template": "consultant" },
+  "initiatives": { "2026": "redistribute", "2026_note": "No internal initiatives this cycle; weight redistributed pro rata.", "2027": "required" },
+  "scoring": { "scale": "1-5", "precision": 1, "rounding": "half_up", "status": "approved" },
+  "cycle_2026": { "self_due": "2026-12-15", "manager_due": "2026-12-22", "calibration_due": "2026-12-29" },
+  "exclude_people": ["leaver@example.com"],
+  "titles": { "person@example.com": "Senior Consultant" },
+  "workday": { "start": "09:00", "end": "17:30", "hours": 8 },
+  "claude_seats": [ { "seat": "seat@example.com", "users": ["user1@example.com", "user2@example.com"] } ]
+}

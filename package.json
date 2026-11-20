@@ -1,0 +1,17 @@
+{
+  "name": "gb-prism-people",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GB Prism People & Performance — performance cycles, time off and off-site work for GB Advisory (internal).",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "dev": "DEV_LOGIN=1 node --no-warnings src/server.js",
+    "seed": "node --no-warnings scripts/seed-synthetic.js",
+    "demo": "node --no-warnings scripts/demo.js",
+    "test": "node --no-warnings --test test/*.test.js",
+    "check": "node --no-warnings scripts/check.js && npm test"
+  },
+  "dependencies": { "exceljs": "4.4.0" }
+}
