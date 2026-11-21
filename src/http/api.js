@@ -93,6 +93,14 @@ export function buildApi(db) {
       items.push({ type: 'feedback', kind: 'Project feedback', title: `${f.emp} on ${f.project}`, link: `#/review/${f.plan_id}`, state: 'Invited' });
     for (const c of db.prepare(`SELECT c.*, d.title FROM contributions c JOIN deliverables d ON d.id = c.deliverable_id JOIN projects p ON p.id = d.project_id WHERE p.lead_user_id = ? AND c.status = 'claimed' AND c.user_id != ?`).all(actor.id, actor.id))
       items.push({ type: 'contribution', kind: 'Confirm contribution', title: `${c.title} — ${c.responsibility}`, link: '#/projects', state: 'Claimed' });
+    // project leads confirm who worked on their projects; partners approve new register entries
+    for (const g of db.prepare(`SELECT p.id, p.name, COUNT(*) n FROM project_assignments a JOIN projects p ON p.id = a.project_id
+        WHERE p.tenant_id = ? AND p.lead_user_id = ? AND a.status IN ('provisional','tentative') AND a.user_id != ? GROUP BY p.id`).all(actor.tenantId, actor.id, actor.id))
+      items.push({ type: 'assignment', kind: 'Confirm team', title: `${g.name} (${g.n} ${g.n === 1 ? 'person' : 'people'})`, link: `#/projects?p=${g.id}`, state: 'Lead to confirm' });
+    if (has(actor, 'partner') || isOps(actor)) {
+      const n = db.prepare("SELECT COUNT(*) n FROM projects WHERE tenant_id = ? AND register_status = 'candidate'").get(actor.tenantId).n;
+      if (n) items.push({ type: 'assignment', kind: 'Approve projects', title: `${n} new project${n === 1 ? '' : 's'} in the register`, link: '#/projects?status=candidate', state: 'Awaiting approval' });
+    }
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
     return { items };

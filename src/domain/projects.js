@@ -43,10 +43,20 @@ export function confirmAssignment(db, actor, assignmentId, { decision = 'confirm
   return tx(db, () => {
     const a = db.prepare('SELECT * FROM project_assignments WHERE id = ? AND tenant_id = ?').get(assignmentId, actor.tenantId);
     if (!a) throw notFound();
-    if (!isLead(db, actor, a.project_id)) throw forbid('Only the project lead confirms assignments');
-    if (a.user_id === actor.id) throw forbid('Leads cannot confirm their own assignment');
-    db.prepare('UPDATE project_assignments SET status = ?, role = COALESCE(?, role), start_date = COALESCE(?, start_date), end_date = COALESCE(?, end_date), confirmed_by = ?, confirmed_at = ? WHERE id = ?')
-      .run(decision === 'reject' ? 'tentative' : 'confirmed', role ?? null, startDate ?? null, endDate ?? null, actor.id, now(), assignmentId);
+    const lead = isLead(db, actor, a.project_id);
+    const ownAsLead = a.user_id === db.prepare('SELECT lead_user_id FROM projects WHERE id = ?').get(a.project_id)?.lead_user_id;
+    // the lead confirms the team; the lead's own assignment is confirmed by a partner or People Ops
+    if (a.user_id === actor.id) throw forbid('You cannot confirm your own assignment');
+    if (!lead && !(ownAsLead && (isOps(actor) || has(actor, 'partner')))) throw forbid('Only the project lead confirms assignments');
+    if (decision === 'reject') {
+      if (['confirmed', 'historical'].includes(a.status)) throw conflict('Confirmed work cannot be removed here');
+      if (db.prepare('SELECT 1 FROM feedback_invites WHERE assignment_id = ? UNION SELECT 1 FROM project_feedback WHERE assignment_id = ?').get(assignmentId, assignmentId)) throw conflict('Feedback already refers to this assignment');
+      audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'assignment.reject', entity: 'project_assignment', entityId: assignmentId, reason: note, before: a });
+      db.prepare('DELETE FROM project_assignments WHERE id = ?').run(assignmentId);
+      return null;
+    }
+    db.prepare("UPDATE project_assignments SET status = 'confirmed', role = COALESCE(?, role), start_date = COALESCE(?, start_date), end_date = COALESCE(?, end_date), confirmed_by = ?, confirmed_at = ? WHERE id = ?")
+      .run(role ?? null, startDate ?? null, endDate ?? null, actor.id, now(), assignmentId);
     audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: `assignment.${decision}`, entity: 'project_assignment', entityId: assignmentId, reason: note, before: { status: a.status } });
     return db.prepare('SELECT * FROM project_assignments WHERE id = ?').get(assignmentId);
   });

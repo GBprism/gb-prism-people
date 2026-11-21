@@ -6,6 +6,10 @@ import { importsScreen } from '/screens/imports.js';
 import { homeScreen } from '/screens/home.js';
 import { signInScreen } from '/screens/signin.js';
 import { myProfileScreen, peopleScreen } from '/screens/people.js';
+import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
+import { inboxScreen } from '/screens/inbox.js';
+import { projectsScreen } from '/screens/projects.js';
+import { historyScreen } from '/screens/history.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -41,8 +45,8 @@ const stateTone = (s) => (['closed', 'acknowledged', 'released', 'approved'].inc
 // --------------------------------------------------------------- shell --
 let ME = null;
 const routes = [
-  [/^#\/?$/, home], [/^#\/inbox$/, inbox], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, timeoff], [/^#\/request\/(.+)$/, requestPage],
-  [/^#\/history$/, history], [/^#\/projects$/, projects], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
+  [/^#\/?$/, home], [/^#\/inbox$/, () => inboxScreen({ api })], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
+  [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
   [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
@@ -83,24 +87,6 @@ async function login() { document.body.replaceChildren(await signInScreen({ api 
 
 // ---------------------------------------------------------------- home --
 function home() { return homeScreen({ api, me: ME }); }
-
-// --------------------------------------------------------------- inbox --
-async function inbox() {
-  const { items } = await api('/api/inbox');
-  const types = [...new Set(items.map((i) => i.type))];
-  let filter = null;
-  const list = h('div', {});
-  const draw = () => list.replaceChildren(...(items.filter((i) => !filter || i.type === filter).map((i) => h('div', { class: 'item' },
-    h('header', {}, h('div', {}, h('span', { class: 'pill' }, i.kind), ' ', h('a', { href: i.link }, i.title)), h('span', { class: 'small muted' }, i.due ? `Due ${fmtDate(i.due)}` : '', i.warnings ? ` · ${i.warnings} warning(s)` : ''))))));
-  if (!items.length) list.append(h('p', { class: 'muted' }, 'Nothing waiting for you.'));
-  else draw();
-  const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter' },
-    [null, ...types].map((t) => h('button', { class: 'btn small', 'aria-pressed': String(t === filter), onclick: (e) => { filter = t; chips.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); draw(); } }, t ? t[0].toUpperCase() + t.slice(1) : 'All')));
-  const progress = await api('/api/team/progress').catch(() => []);
-  return h('div', {}, h('h1', {}, 'Team inbox'), chips, list,
-    progress.length ? h('section', { class: 'card' }, h('h2', {}, 'Team progress'), h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Person', 'Cycle', 'Stage', 'Check-ins', 'Open actions'].map((x) => h('th', {}, x)))),
-      h('tbody', {}, progress.map((p) => h('tr', {}, h('td', {}, h('a', { href: `#/review/${p.id}` }, p.name)), h('td', {}, p.cycle), h('td', {}, p.stateLabel), h('td', {}, p.check_ins), h('td', {}, p.open_actions))))))) : null);
-}
 
 // -------------------------------------------------------------- review --
 async function review(id) {
@@ -303,103 +289,6 @@ function leadFeedback(v) {
 }
 
 // ------------------------------------------------------------ time off --
-async function timeoff() {
-  const [types, mine, people, status] = await Promise.all([api('/api/leave/types'), api('/api/leave/requests'), api('/api/people'), api('/api/leave/status').catch(() => ({ live: true }))]);
-  const cutoverNote = status.live ? null : h('div', { class: 'alert warn', role: 'status' }, h('strong', {}, 'Keep using LeaveBoard for now. '),
-    `Time off moves to Prism after the LeaveBoard cutover on ${fmtDate(status.cutover)}; your balances will carry over then.`);
-  const f = { typeCode: types[0]?.code, start: '', end: '', startPortion: 'full', endPortion: 'full', coverUserId: '', reason: '', handover: '', exceptionReason: '' };
-  const preview = h('div', { 'aria-live': 'polite' });
-  const key = crypto.randomUUID();
-  let t = null;
-  const refresh = () => { clearTimeout(t); t = setTimeout(async () => {
-    if (!f.start || !f.end) return preview.replaceChildren(h('p', { class: 'muted small' }, 'Pick dates to see working days and your projected balance.'));
-    try {
-      const p = await api('/api/leave/preview', { method: 'POST', body: clean(f) });
-      preview.replaceChildren(h('div', { class: 'side' }, h('p', {}, h('strong', {}, `${p.chargeable} working day(s)`), p.approver ? ` · goes to ${p.approver}` : ''),
-        p.projected ? h('p', { class: 'small' }, Object.entries(p.projected).map(([y, b]) => `${y}: ${b.before} → ${b.after} days`).join(' · ')) : null,
-        h('details', {}, h('summary', {}, 'How the days were counted'), h('ul', { class: 'small' }, p.days.map((d) => h('li', {}, `${d.date}: ${d.note}${d.charge !== '0' ? ` (${d.charge})` : ''}`)))),
-        p.blocking.length ? h('div', { class: 'alert error' }, h('strong', {}, 'Cannot submit yet'), h('ul', {}, p.blocking.map((b) => h('li', {}, b)))) : null,
-        p.warnings.length ? h('div', { class: 'alert warn' }, h('ul', {}, p.warnings.map((b) => h('li', {}, b)))) : null,
-        p.policy.status !== 'approved' ? h('p', { class: 'small muted' }, `Policy v${p.policy.version ?? '—'} is awaiting GB confirmation.`) : null));
-    } catch (e) { preview.replaceChildren(errorBox(e)); }
-  }, 300); };
-  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== ''));
-  const inp = (k, attrs) => h('input', { id: `f_${k}`, ...attrs, oninput: (e) => { f[k] = e.target.value; refresh(); } });
-  const portion = (k) => h('select', { id: `f_${k}`, onchange: (e) => { f[k] = e.target.value; refresh(); } }, [['full', 'Full day'], ['am', 'Morning'], ['pm', 'Afternoon']].map(([v, t]) => h('option', { value: v }, t)));
-  const form = h('section', { class: 'card' }, h('h2', {}, 'New request'),
-    h('div', { class: 'cols' },
-      h('div', {}, h('label', { for: 'f_type' }, 'Request type'), h('select', { id: 'f_type', onchange: (e) => { f.typeCode = e.target.value; refresh(); } }, types.map((x) => h('option', { value: x.code }, x.name)))),
-      h('div', {}, h('label', { for: 'f_start' }, 'First day'), inp('start', { type: 'date' })), h('div', {}, h('label', { for: 'f_startPortion' }, 'First day is'), portion('startPortion')),
-      h('div', {}, h('label', { for: 'f_end' }, 'Last day'), inp('end', { type: 'date' })), h('div', {}, h('label', { for: 'f_endPortion' }, 'Last day is'), portion('endPortion'))),
-    h('label', { for: 'f_coverUserId' }, 'Who covers your work? (required for annual leave)'), h('select', { id: 'f_coverUserId', onchange: (e) => { f.coverUserId = e.target.value; refresh(); } }, h('option', { value: '' }, '— choose a colleague —'), people.map((x) => h('option', { value: x.id }, x.name))),
-    h('label', { for: 'f_handover' }, 'Handover notes'), inp('handover', {}),
-    h('label', { for: 'f_reason' }, 'Reason (only you, your approver and People Ops see this; optional unless required)'), inp('reason', {}),
-    h('label', { for: 'f_exceptionReason' }, 'Exception reason (short notice, retroactive, over quota)'), inp('exceptionReason', {}),
-    preview,
-    h('button', { class: 'btn primary mt', onclick: () => act(() => api('/api/leave/requests', { method: 'POST', body: { ...clean(f), clientKey: key } }), 'Request submitted').then(() => { location.hash = '#/'; }) }, 'Submit request'));
-  refresh();
-  const today = new Date().toISOString().slice(0, 10); const in60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
-  const cal = await api(`/api/leave/calendar?from=${today}&to=${in60}`);
-  return h('div', {}, h('h1', {}, 'Time off and off-site work'), cutoverNote, form,
-    h('section', { class: 'card' }, h('h2', {}, 'My requests'), mine.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Type', 'Dates', 'Days', 'Status', ''].map((x) => h('th', {}, x)))),
-      h('tbody', {}, mine.map((r) => h('tr', {}, h('td', {}, r.type.name), h('td', {}, `${fmtDate(r.start_date)}${r.end_date !== r.start_date ? ' → ' + fmtDate(r.end_date) : ''}`), h('td', {}, r.chargeable), h('td', {}, h('span', { class: `pill ${stateTone(r.state)}` }, r.state)),
-        h('td', {}, ['submitted', 'approved'].includes(r.state) ? h('button', { class: 'btn small', onclick: () => act(() => api(`/api/leave/requests/${r.id}/cancel`, { method: 'POST', body: {} }), r.state === 'submitted' ? 'Withdrawn' : 'Cancelled').then(render) }, r.state === 'submitted' ? 'Withdraw' : 'Cancel') : null)))))) : h('p', { class: 'muted' }, 'No requests yet.')),
-    h('section', { class: 'card' }, h('h2', {}, 'Team availability (next 60 days)'), cal.length ? h('ul', {}, cal.map((c) => h('li', {}, `${c.name}: ${c.availability} ${fmtDate(c.start_date)}${c.end_date !== c.start_date ? ' → ' + fmtDate(c.end_date) : ''}${c.half ? ' (part day)' : ''}${c.tentative ? ' · pending' : ''}`))) : h('p', { class: 'muted' }, 'Everyone is available.')));
-}
-
-async function requestPage(id) {
-  const r = await api(`/api/leave/requests/${id}`);
-  const note = h('input', { id: 'dn', placeholder: 'Note (required when declining)' });
-  return h('div', {}, h('h1', {}, `${r.user.name} — ${r.type.name}`),
-    h('section', { class: 'card' }, h('p', {}, `${fmtDate(r.start_date)} (${r.start_portion}) → ${fmtDate(r.end_date)} (${r.end_portion}) · `, h('strong', {}, `${r.chargeable} working day(s)`), ' · ', h('span', { class: `pill ${stateTone(r.state)}` }, r.state)),
-      r.reason ? h('p', {}, `Reason: ${r.reason}`) : null, r.handover ? h('p', {}, `Handover: ${r.handover}`) : null,
-      r.warnings.length ? h('div', { class: 'alert warn' }, h('ul', {}, r.warnings.map((w) => h('li', {}, w)))) : null,
-      r.exception ? h('div', { class: 'alert warn' }, `Exception requested: ${r.exception.reason}`) : null,
-      r.balances ? h('p', { class: 'small' }, r.balances.map((b) => `${b.name}: ${b.posted} (pending ${b.pending})`).join(' · ')) : null,
-      h('details', {}, h('summary', {}, 'Day-by-day'), h('ul', { class: 'small' }, r.breakdown.days.map((d) => h('li', {}, `${d.date}: ${d.note}`)))),
-      r.can_decide ? h('div', {}, h('label', { for: 'dn' }, 'Decision note'), note, h('div', { class: 'row mt' },
-        h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/leave/requests/${id}/decide`, { method: 'POST', body: { decision: 'approve', note: note.value, rowVersion: r.row_version, approveException: !!r.exception } }), 'Approved').then(() => { location.hash = '#/inbox'; }) }, r.exception ? 'Approve with exception' : 'Approve'),
-        h('button', { class: 'btn danger', onclick: () => act(() => api(`/api/leave/requests/${id}/decide`, { method: 'POST', body: { decision: 'decline', note: note.value, rowVersion: r.row_version } }), 'Declined').then(() => { location.hash = '#/inbox'; }) }, 'Decline'))) : null));
-}
-
-// ------------------------------------------------------------- history --
-async function history() {
-  const plans = await api('/api/my/plans'); const cycles = await api('/api/cycles'); const templates = await api('/api/templates');
-  const planning = cycles.filter((c) => c.status === 'planning' && !plans.find((p) => p.year === c.year));
-  const tpl = h('select', { id: 'tpl' }, templates.map((t) => h('option', { value: t.id }, `${t.role_family} v${t.version}${t.status !== 'approved' ? ' (candidate)' : ''}`)));
-  const prior = plans.find((p) => ['closed', 'acknowledged'].includes(p.state) && p.cycle_status !== 'historical');
-  let carry = [];
-  const carryBox = h('div', {});
-  if (prior) {
-    const pv = await api(`/api/plans/${prior.id}`);
-    carryBox.append(h('p', { class: 'small' }, `Carry forward from ${pv.cycle.name} (targets and weights must be set afresh):`),
-      ...pv.items.map((i) => h('label', { class: 'plain' }, h('input', { type: 'checkbox', class: 'inline-check', onchange: (e) => { carry = e.target.checked ? [...carry, i.id] : carry.filter((x) => x !== i.id); } }), ` ${i.title}`)));
-  }
-  return h('div', {}, h('h1', {}, 'My reviews'),
-    h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Cycle', 'Stage'].map((x) => h('th', {}, x)))), h('tbody', {}, plans.map((p) => h('tr', {}, h('td', {}, h('a', { href: `#/review/${p.id}` }, p.cycle)), h('td', {}, p.stateLabel)))))),
-    planning.map((c) => h('section', { class: 'card' }, h('h2', {}, `Start your ${c.name}`), h('label', { for: 'tpl' }, 'Role template'), tpl, carryBox,
-      h('button', { class: 'btn primary mt', onclick: () => act(() => api('/api/plans', { method: 'POST', body: { cycleId: c.id, templateId: tpl.value, carryItemIds: carry } })).then((p) => { location.hash = `#/review/${p.id}`; }) }, 'Create draft plan'))));
-}
-
-// ------------------------------------------------------------ projects --
-async function projects() {
-  const list = await api('/api/projects');
-  return h('div', {}, h('h1', {}, 'Projects, proposals and initiatives'), h('p', { class: 'muted small' }, 'Provisional allocations and Drive activity are leads only. A project lead confirms who did what.'),
-    list.length ? list.map((p) => h('section', { class: 'card' }, h('h2', {}, `${p.name} `, h('span', { class: 'pill' }, p.kind), ' ', h('span', { class: `pill ${p.register_status === 'approved' ? 'ok' : 'warn'}` }, p.register_status)),
-      h('p', { class: 'small' }, `Lead: ${p.lead_name || '—'} · ${p.start_date || ''} → ${p.end_date || ''}`),
-      h('p', { class: 'small' }, 'Confirmed team: ', p.team_confirmed.map((a) => `${a.name} (${a.role})`).join(', ') || '—'),
-      p.team_unconfirmed.length ? h('div', { class: 'small' }, 'Awaiting lead confirmation: ', p.team_unconfirmed.map((a) => h('span', {}, `${a.name} (${a.role}, ${a.status}) `, p.is_lead ? h('button', { class: 'btn small', onclick: () => act(() => api(`/api/assignments/${a.id}/review`, { method: 'POST', body: { decision: 'confirm' } }), 'Confirmed').then(render) }, 'Confirm') : null, ' '))) : null,
-      p.deliverables.map((d) => {
-        const resp = h('select', { 'aria-label': 'My responsibility' }, ['lead', 'author', 'analyst', 'reviewer', 'support'].map((x) => h('option', { value: x }, x)));
-        const desc = h('input', { 'aria-label': 'What I did', placeholder: 'What you did' }); const ev = h('input', { 'aria-label': 'Evidence link', type: 'url', placeholder: 'Drive link' });
-        return h('div', { class: 'item' }, h('header', {}, h('strong', {}, `${d.title} ${d.version || ''}`), h('span', { class: 'small muted' }, [d.milestone, d.status, d.acceptance].filter(Boolean).join(' · '))),
-          h('ul', { class: 'small' }, d.contributions.map((c) => h('li', {}, `${c.name} — ${c.responsibility}: ${c.description || ''} `, h('span', { class: `pill ${c.status === 'confirmed' ? 'ok' : c.status === 'rejected' ? 'danger' : 'warn'}` }, c.status),
-            p.is_lead && c.status === 'claimed' && c.user_id !== ME.id ? [' ', h('button', { class: 'btn small', onclick: () => act(() => api(`/api/contributions/${c.id}/review`, { method: 'POST', body: { decision: 'confirm' } }), 'Confirmed').then(render) }, 'Confirm'), ' ',
-              h('button', { class: 'btn small', onclick: () => act(() => api(`/api/contributions/${c.id}/review`, { method: 'POST', body: { decision: 'correct', note: prompt('What should it say?') } }), 'Corrected').then(render) }, 'Correct')] : null))),
-          h('div', { class: 'row' }, resp, desc, ev, h('button', { class: 'btn', onclick: () => act(() => api(`/api/deliverables/${d.id}/contributions`, { method: 'POST', body: { responsibility: resp.value, description: desc.value, evidenceUrl: ev.value || null } }), 'Contribution claimed — the lead will confirm').then(render) }, 'Claim my contribution')));
-      }))) : h('p', { class: 'muted' }, 'No projects visible to you.'));
-}
-
 // ------------------------------------------------------------------ AI --
 async function myAi() {
   const [seats, ex] = await Promise.all([api('/api/ai/seats/mine'), api('/api/ai/examples/mine')]);
