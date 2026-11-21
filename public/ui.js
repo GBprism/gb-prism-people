@@ -113,7 +113,7 @@ export function dataTable({ columns, rows, rowKey = (r) => r.id, selectable = fa
     if (sort) { const c = columns.find((x) => x.key === sort); data.sort((a, b) => { const x = c.sortValue ? c.sortValue(a) : a[c.key]; const y = c.sortValue ? c.sortValue(b) : b[c.key]; return (x > y ? 1 : x < y ? -1 : 0) * dir; }); }
     const head = h('tr', {}, selectable ? h('th', { class: 'col-check' }, h('input', { type: 'checkbox', 'aria-label': 'Select all', checked: selected.size === rows.length && rows.length > 0, onchange: (e) => { rows.forEach((r) => (e.target.checked ? selected.add(rowKey(r)) : selected.delete(rowKey(r)))); draw(); } })) : null,
       columns.map((c) => h('th', { scope: 'col', 'aria-sort': sort === c.key ? (dir === 1 ? 'ascending' : 'descending') : null, class: c.num ? 'num' : null },
-        c.sortable === false ? c.label : h('button', { class: 'sort-btn', onclick: () => { dir = sort === c.key ? -dir : 1; sort = c.key; draw(); } }, c.label, icon('arrow-up-down')))));
+        c.sortable === false || !c.label ? c.label : h('button', { class: 'sort-btn', onclick: () => { dir = sort === c.key ? -dir : 1; sort = c.key; draw(); } }, c.label, icon('arrow-up-down')))));
     const body = data.length ? data.map((r) => {
       const k = rowKey(r);
       return h('tr', { 'aria-selected': selected.has(k) ? 'true' : null, onclick: onRowClick ? (e) => { if (!e.target.closest('button,a,input')) onRowClick(r); } : null, style: null },

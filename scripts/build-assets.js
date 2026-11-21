@@ -23,7 +23,7 @@ export const ICONS = [
   'plus', 'pencil', 'trash-2', 'ellipsis', 'filter', 'arrow-up-down', 'arrow-right', 'arrow-up-right', 'arrow-down-right', 'external-link', 'eye', 'send',
   'user', 'user-check', 'user-round', 'briefcase', 'target', 'award', 'trending-up', 'gauge', 'list-checks', 'history', 'rotate-ccw', 'lock', 'shield-check',
   'plane', 'house', 'stethoscope', 'heart', 'sun', 'layout-dashboard', 'table', 'rows-3', 'command', 'messages-square', 'lightbulb', 'file-check-2', 'refresh-cw',
-  'circle-dot', 'circle', 'hourglass', 'party-popper', 'mail', 'building-2', 'map-pin', 'percent', 'hash', 'goal',
+  'circle-dot', 'circle', 'hourglass', 'calculator', 'party-popper', 'mail', 'building-2', 'map-pin', 'percent', 'hash', 'goal',
 ];
 const src = nm('lucide-static/icons');
 const symbols = [];
