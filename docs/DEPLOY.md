@@ -114,7 +114,7 @@ Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-d
 ## Leave approver and LeaveBoard cutover (GB decisions)
 
 ```bash
-cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.js --db /var/lib/gb-prism/prism-people.db --approver layan@gb-advisory.com --cutover 2026-12-31
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.js --db /var/lib/gb-prism/prism-people.db --approver layan@gb-advisory.com --cutover 2026-11-24
 ```
 
-Until opening balances are posted, Time off tells people to keep using LeaveBoard. After 31 Dec, export a fresh LeaveBoard **Annual situation** report, replace `config/private/real/leaveboard/annual-situation.xlsx`, and run `load-gb-all.js … --cutover 2026-12-31`. That posts the opening balances and opens time off in Prism.
+Until opening balances are posted, Time off tells people to keep using LeaveBoard. At close of business on the cutover day, export a fresh LeaveBoard **Annual situation** report (and the **Leaves** report for bookings after the cutover). Upload them in Admin → Imports, apply, then **Post opening balances** with the cutover date. That opens time off in Prism.
