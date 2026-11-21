@@ -110,3 +110,11 @@ cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-all.js --
 ```
 
 Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-dd` only once GB has set the LeaveBoard cutover date; this posts opening balances. Re-running is safe. Restart afterwards with `sudo systemctl restart gb-prism`.
+
+## Leave approver and LeaveBoard cutover (GB decisions)
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.js --db /var/lib/gb-prism/prism-people.db --approver layan@gb-advisory.com --cutover 2026-12-31
+```
+
+Until opening balances are posted, Time off tells people to keep using LeaveBoard. After 31 Dec, export a fresh LeaveBoard **Annual situation** report, replace `config/private/real/leaveboard/annual-situation.xlsx`, and run `load-gb-all.js … --cutover 2026-12-31`. That posts the opening balances and opens time off in Prism.

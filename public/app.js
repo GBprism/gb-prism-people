@@ -304,7 +304,9 @@ function leadFeedback(v) {
 
 // ------------------------------------------------------------ time off --
 async function timeoff() {
-  const [types, mine, people] = await Promise.all([api('/api/leave/types'), api('/api/leave/requests'), api('/api/people')]);
+  const [types, mine, people, status] = await Promise.all([api('/api/leave/types'), api('/api/leave/requests'), api('/api/people'), api('/api/leave/status').catch(() => ({ live: true }))]);
+  const cutoverNote = status.live ? null : h('div', { class: 'alert warn', role: 'status' }, h('strong', {}, 'Keep using LeaveBoard for now. '),
+    `Time off moves to Prism after the LeaveBoard cutover on ${fmtDate(status.cutover)}; your balances will carry over then.`);
   const f = { typeCode: types[0]?.code, start: '', end: '', startPortion: 'full', endPortion: 'full', coverUserId: '', reason: '', handover: '', exceptionReason: '' };
   const preview = h('div', { 'aria-live': 'polite' });
   const key = crypto.randomUUID();
@@ -338,7 +340,7 @@ async function timeoff() {
   refresh();
   const today = new Date().toISOString().slice(0, 10); const in60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const cal = await api(`/api/leave/calendar?from=${today}&to=${in60}`);
-  return h('div', {}, h('h1', {}, 'Time off and off-site work'), form,
+  return h('div', {}, h('h1', {}, 'Time off and off-site work'), cutoverNote, form,
     h('section', { class: 'card' }, h('h2', {}, 'My requests'), mine.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Type', 'Dates', 'Days', 'Status', ''].map((x) => h('th', {}, x)))),
       h('tbody', {}, mine.map((r) => h('tr', {}, h('td', {}, r.type.name), h('td', {}, `${fmtDate(r.start_date)}${r.end_date !== r.start_date ? ' → ' + fmtDate(r.end_date) : ''}`), h('td', {}, r.chargeable), h('td', {}, h('span', { class: `pill ${stateTone(r.state)}` }, r.state)),
         h('td', {}, ['submitted', 'approved'].includes(r.state) ? h('button', { class: 'btn small', onclick: () => act(() => api(`/api/leave/requests/${r.id}/cancel`, { method: 'POST', body: {} }), r.state === 'submitted' ? 'Withdrawn' : 'Cancelled').then(render) }, r.state === 'submitted' ? 'Withdraw' : 'Cancel') : null)))))) : h('p', { class: 'muted' }, 'No requests yet.')),

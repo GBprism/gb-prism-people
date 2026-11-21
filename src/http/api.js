@@ -152,6 +152,7 @@ export function buildApi(db) {
   });
 
   // ---------------------------------------------------------------- leave --
+  r.get('/api/leave/status', ({ actor }) => leave.leaveStatus(db, actor.tenantId));
   r.get('/api/leave/types', ({ actor }) => db.prepare('SELECT code, name, category, allow_partial, requires_cover, reason_required, tracks_balance FROM leave_types WHERE tenant_id = ? AND active = 1').all(actor.tenantId));
   r.get('/api/leave/balances', ({ actor, ctx }) => leave.balancesForUser(db, actor, q(ctx, 'userId') || actor.id, Number(q(ctx, 'year') || todayIn().slice(0, 4)))
     .map((b) => ({ ...b, posted: fmtX100(b.posted_x100), pending: fmtX100(b.pending_x100), projected: fmtX100(b.projected_x100) })));
