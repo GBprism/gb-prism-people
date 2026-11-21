@@ -42,10 +42,16 @@ export async function callback(cfg, db, req, res, url, fetchImpl = fetch) {
   if (!code) return fail(400, 'Google did not return a sign-in code.');
   const tok = await fetchImpl(TOKEN, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ code, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: `${cfg.baseUrl}/auth/google/callback`, grant_type: 'authorization_code', code_verifier: st.verifier }) });
-  if (!tok.ok) return fail(401, 'Google sign-in failed.');
+  if (!tok.ok) {
+    // log Google's reason (never the code or secret) so the cause is visible in the server log
+    const why = await tok.json().catch(() => ({}));
+    console.error(`Google token exchange failed: HTTP ${tok.status} ${why.error || ''} ${why.error_description || ''}`.trim());
+    return fail(401, why.error === 'invalid_client' ? 'Google sign-in failed: the server has the wrong client ID or secret. Ask the administrator to re-enter them.'
+      : why.error === 'redirect_uri_mismatch' ? 'Google sign-in failed: the redirect address is not registered in Google Cloud.' : 'Google sign-in failed.');
+  }
   const { access_token: at } = await tok.json();
   const ui = await fetchImpl(USERINFO, { headers: { Authorization: `Bearer ${at}` } });
-  if (!ui.ok) return fail(401, 'Google sign-in failed.');
+  if (!ui.ok) { console.error(`Google userinfo failed: HTTP ${ui.status}`); return fail(401, 'Google sign-in failed.'); }
   const info = await ui.json();
   const email = String(info.email || '').toLowerCase();
   if (!info.email_verified || String(info.hd || '').toLowerCase() !== cfg.domain || !email.endsWith(`@${cfg.domain}`)) return fail(403, `Please sign in with your @${cfg.domain} Google account.`);
