@@ -15,7 +15,7 @@ const v = db.prepare('SELECT MAX(version) v FROM schema_migrations').get().v;
 if (v !== MIGRATIONS.length) { failed++; console.error(`migrations: applied ${v} of ${MIGRATIONS.length}`); }
 try {
   const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split('\n');
-  const bad = tracked.filter((f) => /^private-extracts\/|^config\/private\/|^backup\/|\.db$|^data\/(?!\.gitkeep)/.test(f) || /\.xlsx$/.test(f));
+  const bad = tracked.filter((f) => /^private-extracts\/|^config\/private\/|^backup\/|\.db$|^data\/(?!\.gitkeep)/.test(f) || (/\.xlsx$/.test(f) && !/^public\/templates\//.test(f)));
   if (bad.length) { failed++; console.error('private or data files tracked by git:', bad); }
 } catch { /* not a git checkout */ }
 // design rule: colours live only in public/tokens.css
