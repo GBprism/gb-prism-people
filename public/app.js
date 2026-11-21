@@ -2,6 +2,7 @@
 // All DOM is created with h() (textContent), never innerHTML with data.
 import { mountShell, pageFor } from '/shell.js';
 import { pageHeader, emptyState, skeletonLines, button as uiButton } from '/ui.js';
+import { importsScreen } from '/screens/imports.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -63,10 +64,11 @@ async function render() {
     // standard page template: icon + title + one-line description; the screen's own h1 supplies the title text
     const h1 = node.querySelector?.('h1');
     const titleText = h1?.textContent?.trim();
-    const header = pageHeader({ iconName: page.icon, title: titleText || page.title, description: page.desc });
-    if (h1) h1.replaceWith(header); else node.prepend?.(header);
+    const header = pageHeader({ iconName: page.icon, title: titleText || page.title, description: page.desc, actions: node.pageActions || [] });
+    if (!node.modern) { if (h1) h1.replaceWith(header); else node.prepend?.(header); }
     if (page.parent && titleText) SHELL.setPage(hash, titleText);
-    container.replaceChildren(banner, node);
+    container.className = node.modern ? 'page' : 'page legacy';
+    if (node.modern) container.replaceChildren(header, banner, node); else container.replaceChildren(banner, node);
     main.focus({ preventScroll: true });
     SHELL.refreshInbox();
     return;
@@ -447,53 +449,7 @@ async function adminRoster() {
   return h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Name', 'Email', 'Title', 'Manager', 'Backup approver', 'Country', 'Probation ends', 'Roles'].map((x) => h('th', {}, x)))),
     h('tbody', {}, rows.map((u) => h('tr', {}, h('td', {}, u.name, u.synthetic ? h('span', { class: 'pill ml' }, 'synthetic') : null), h('td', {}, u.email), h('td', {}, u.title || '—'), h('td', {}, u.manager || '—'), h('td', {}, u.backup || '—'), h('td', {}, u.country || '—'), h('td', {}, u.probation_end || '—'), h('td', {}, u.roles.join(', ')))))));
 }
-async function adminImports() {
-  const [batches, cycles] = await Promise.all([api('/api/imports'), api('/api/cycles')]);
-  const out = h('div', {});
-  const file = h('input', { type: 'file', accept: '.xlsx', id: 'impfile', multiple: true });
-  const kind = h('select', { id: 'impkind' }, [['gb-forms', 'GB 2026 evaluation forms (select several)'], ['leaveboard', 'LeaveBoard export (General / Annual / Attendance / Leaves)'], ['pms-plans', 'PMS plans (one row per item)'], ['pms-history', 'PMS history team summary']].map(([v, t]) => h('option', { value: v }, t)));
-  const cyc = h('select', { id: 'impcycle' }, cycles.map((c) => h('option', { value: c.id }, c.name)));
-  const extra = h('input', { id: 'impextra', placeholder: 'LeaveBoard: reporting range e.g. 2026-01-01..2026-11-19 · History: year e.g. 2025' });
-  const upload = async () => {
-    const f = file.files[0]; if (!f) throw new Error('Choose a file');
-    if (kind.value === 'gb-forms') {
-      const files = await Promise.all([...file.files].map(async (x) => ({ filename: x.name, base64: await toBase64(x) })));
-      return out.replaceChildren(batchView(await api('/api/imports/gb-forms', { method: 'POST', body: { cycleId: cyc.value, files } })));
-    }
-    const buf = await f.arrayBuffer(); const qs = new URLSearchParams({ filename: f.name });
-    if (kind.value === 'pms-plans') qs.set('cycleId', cyc.value);
-    if (kind.value === 'pms-history') qs.set('year', extra.value || '2025');
-    if (kind.value === 'leaveboard' && extra.value.includes('..')) { const [a, b] = extra.value.split('..'); qs.set('from', a); qs.set('to', b); }
-    const b = await api(`/api/imports/${kind.value}?${qs}`, { method: 'POST', raw: buf });
-    out.replaceChildren(batchView(b));
-  };
-  return h('div', {}, h('section', { class: 'card' }, h('h2', {}, 'Upload a reviewed export'), h('p', { class: 'small muted' }, 'Selected files only — no broad Drive access. Payroll and personal columns are excluded automatically. Nothing is written until you apply the previewed batch.'),
-    h('div', { class: 'cols' }, h('div', {}, h('label', { for: 'impkind' }, 'Source'), kind), h('div', {}, h('label', { for: 'impcycle' }, 'Target cycle (plans)'), cyc), h('div', {}, h('label', { for: 'impextra' }, 'Range / year'), extra), h('div', {}, h('label', { for: 'impfile' }, 'File'), file)),
-    h('button', { class: 'btn primary mt', onclick: () => act(upload) }, 'Preview')), out,
-    h('section', { class: 'card' }, h('h2', {}, 'Batches'), h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['File', 'Kind', 'Status', 'Range', 'Created'].map((x) => h('th', {}, x)))),
-      h('tbody', {}, batches.map((b) => h('tr', {}, h('td', {}, h('a', { href: '#', onclick: async (e) => { e.preventDefault(); out.replaceChildren(batchView(await api(`/api/imports/${b.id}`))); } }, b.filename)), h('td', {}, b.kind), h('td', {}, b.status), h('td', {}, b.reporting_from ? `${b.reporting_from} → ${b.reporting_to}` : '—'), h('td', {}, fmtDate(b.created_at)))))))));
-}
-function batchView(b) {
-  const s = b.summary;
-  const cutover = h('input', { type: 'date', id: 'cutover', 'aria-label': 'Cutover date' });
-  return h('section', { class: 'card' }, h('h2', {}, `${b.filename} — ${b.kind}`), b.duplicateOf ? h('div', { class: 'alert ok' }, 'This exact file was uploaded before; showing the existing batch.') : null,
-    h('p', { class: 'small' }, `Status: ${b.status}${b.generated_at ? ` · generated ${b.generated_at}` : ''}${b.reporting_from ? ` · range ${b.reporting_from} → ${b.reporting_to}` : ''}`),
-    s.blocking?.length ? h('div', { class: 'alert error' }, h('strong', {}, 'Blocking'), h('ul', {}, s.blocking.map((x) => h('li', {}, x)))) : null,
-    s.warnings?.length ? h('div', { class: 'alert warn' }, h('ul', {}, s.warnings.map((x) => h('li', {}, x)))) : null,
-    s.excluded_columns?.length ? h('p', { class: 'small' }, `Excluded columns (never read): ${s.excluded_columns.join(', ')}`) : null,
-    s.plans && b.kind === 'pms_gb_form' ? s.plans.map((p) => h('div', { class: 'item' }, h('header', {}, h('strong', {}, `${p.person} — ${p.position}`), h('span', { class: 'small muted' }, `${p.file} · ${p.items} items · ${p.match_status}`)),
-      h('p', { class: 'small' }, 'Weights: ', Object.entries(p.category_weights).map(([c, w]) => `${c} ${w}%`).join(' · ')),
-      [...p.blocking, ...p.issues, ...p.weight_errors].length ? h('ul', { class: 'small' }, [...p.blocking, ...p.issues, ...p.weight_errors].map((x) => h('li', {}, x))) : null,
-      p.formula_issues.length ? h('details', { class: 'small' }, h('summary', {}, `${p.formula_issues.length} spreadsheet formula problem(s) — Prism recalculates instead`), h('ul', {}, p.formula_issues.map((x) => h('li', {}, x)))) : null)) : null,
-    s.checksum ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Column', 'Rows sum', 'Totals row', ''].map((x) => h('th', {}, x)))), h('tbody', {}, Object.entries(s.checksum).map(([k, c]) => h('tr', {}, h('td', {}, k), h('td', {}, c.rows), h('td', {}, c.source_total), h('td', {}, h('span', { class: `pill ${c.ok ? 'ok' : 'danger'}` }, c.ok ? 'reconciled' : 'mismatch'))))))) : null,
-    s.totals ? h('pre', { class: 'math' }, JSON.stringify(s.totals, null, 1)) : null,
-    h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Row', 'Key', 'Match', 'Action', 'Issues'].map((x) => h('th', {}, x)))),
-      h('tbody', {}, b.rows.map((r) => h('tr', {}, h('td', {}, r.row_no), h('td', {}, r.source_key), h('td', {}, r.match_status), h('td', {}, h('span', { class: `pill ${r.action === 'reject' ? 'danger' : r.action === 'review' ? 'warn' : 'ok'}` }, r.action)), h('td', { class: 'small' }, r.issues.join('; '))))))),
-    b.status === 'previewed' ? h('button', { class: 'btn primary mt', onclick: () => act(() => api(`/api/imports/${b.id}/apply`, { method: 'POST', body: {} }), 'Batch applied').then(render) }, 'Apply reviewed batch') : null,
-    b.status === 'applied' && b.kind === 'leaveboard_annual_situation' ? h('div', { class: 'row' }, cutover, h('button', { class: 'btn', onclick: () => act(() => api(`/api/imports/${b.id}/opening-balances`, { method: 'POST', body: { cutover: cutover.value } }), 'Opening balances posted') }, 'Post opening balances at cutover'),
-      h('button', { class: 'btn', onclick: async () => { const r = await api(`/api/imports/${b.id}/reconcile`); $('#main').append(h('section', { class: 'card' }, h('h2', {}, 'Reconciliation'), h('pre', { class: 'math' }, r.map((x) => `${x.vendor_name} · ${x.category}: ${x.status}${x.difference ? ` (Δ ${x.difference})` : ''}`).join('\n')))); } }, 'Reconcile')) : null,
-    b.status === 'applied' ? h('button', { class: 'btn danger', onclick: () => act(() => api(`/api/imports/${b.id}/reverse`, { method: 'POST', body: { reason: prompt('Reason for reversing this batch (audited):') } }), 'Batch reversed').then(render) }, 'Reverse batch') : null);
-}
+function adminImports() { return importsScreen({ api, toBase64, render }); }
 async function adminPolicy() {
   const pols = await api('/api/admin/policy');
   return h('div', {}, pols.map((p) => h('section', { class: 'card' }, h('h2', {}, `Policy v${p.version} `, h('span', { class: `pill ${p.status === 'approved' ? 'ok' : 'warn'}` }, p.status)), h('p', { class: 'small' }, `Effective ${p.effective_from}${p.effective_to ? ' → ' + p.effective_to : ''}. ${p.note || ''}`),

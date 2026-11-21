@@ -263,7 +263,9 @@ export function buildApi(db) {
     if (!Array.isArray(b.files) || !b.files.length) throw bad('Add at least one form');
     return previewGbForms(db, actor, { cycleId: b.cycleId, files: b.files.map((f) => ({ filename: String(f.filename), buffer: Buffer.from(String(f.base64), 'base64') })) });
   }, { raw: true });
-  r.get('/api/imports', ({ actor }) => { ops(actor); return db.prepare('SELECT id, kind, filename, status, created_at, applied_at, reporting_from, reporting_to, generated_at FROM import_batches WHERE tenant_id = ? ORDER BY created_at DESC').all(actor.tenantId); });
+  r.get('/api/imports', ({ actor }) => { ops(actor); return db.prepare(`SELECT b.id, b.kind, b.filename, b.status, b.created_at, b.applied_at, b.reporting_from, b.reporting_to, b.generated_at,
+      u.name created_by_name, (SELECT COUNT(*) FROM import_rows r WHERE r.batch_id = b.id) row_count
+      FROM import_batches b LEFT JOIN users u ON u.id = b.created_by WHERE b.tenant_id = ? ORDER BY b.created_at DESC`).all(actor.tenantId); });
   r.get('/api/imports/:id', ({ actor, params }) => getBatch(db, actor, params.id));
   r.post('/api/imports/:id/apply', ({ actor, params, body }) => {
     const b = getBatch(db, actor, params.id);
