@@ -31,7 +31,7 @@ test('shell: sidebar by role, breadcrumbs, ⌘K palette, collapse, mobile drawer
     const groups = await emp.$$eval('.nav-group-label', (els) => els.map((e) => e.textContent));
     assert.deepEqual(groups, ['Workspace', 'Performance']);
     assert.equal(await emp.$eval('.nav-item[aria-current="page"] .nav-label', (e) => e.textContent), 'Home');
-    assert.equal(await emp.$eval('.page-header h1', (e) => e.textContent), 'Hello, Eli');
+    assert.match(await emp.$eval('.home-head h1', (e) => e.textContent), /^Good (morning|afternoon|evening), Eli$/);
     // ⌘K / Ctrl+K palette → Time off
     await emp.keyboard.press('Control+k');
     await emp.waitForSelector('.palette');
