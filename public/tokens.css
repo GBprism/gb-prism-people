@@ -19,6 +19,7 @@
   --gb-sky: #86D3E5;         /* light facet: charts, subtle highlights */
   --gb-midnight: #010624;    /* dark brand background (sidebar option A, sign-in panel) */
   --gb-midnight-2: #0B1640;  /* hover surface on midnight */
+  --gradient-brand: linear-gradient(155deg, #010624 0%, #0B1640 55%, #004281 100%);
 
   /* --- semantic colour ---------------------------------------------------- */
   --color-primary: var(--gb-navy);

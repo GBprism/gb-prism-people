@@ -3,6 +3,8 @@
 import { mountShell, pageFor } from '/shell.js';
 import { pageHeader, emptyState, skeletonLines, button as uiButton } from '/ui.js';
 import { importsScreen } from '/screens/imports.js';
+import { homeScreen } from '/screens/home.js';
+import { signInScreen } from '/screens/signin.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -68,46 +70,17 @@ async function render() {
     if (!node.modern) { if (h1) h1.replaceWith(header); else node.prepend?.(header); }
     if (page.parent && titleText) SHELL.setPage(hash, titleText);
     container.className = node.modern ? 'page' : 'page legacy';
-    if (node.modern) container.replaceChildren(header, banner, node); else container.replaceChildren(banner, node);
+    if (node.modern) container.replaceChildren(...(node.noHeader ? [banner, node] : [header, banner, node])); else container.replaceChildren(banner, node);
     main.focus({ preventScroll: true });
     SHELL.refreshInbox();
     return;
   }
   container.replaceChildren(banner, emptyState({ iconName: 'circle-help', title: 'Page not found', text: 'The link may be out of date.', action: uiButton('Go to Home', { variant: 'primary', iconName: 'house', href: '#/' }) }));
 }
-async function login() {
-  let users = []; let cfg = {};
-  try { cfg = await api('/api/auth/config'); } catch { /* ignore */ }
-  $('#main').classList.add('page', 'legacy');
-  if (cfg.google) {
-    return $('#main').replaceChildren(h('div', { class: 'card' }, h('h1', {}, 'Sign in'), h('p', { class: 'muted' }, `Use your @${cfg.domain} Google Workspace account.`), h('a', { class: 'btn primary', href: '/auth/google' }, 'Sign in with Google')));
-  }
-  try { users = await api('/api/dev/users'); } catch { /* production: gateway handles sign-in */ }
-  $('#main').replaceChildren(h('div', { class: 'card' }, h('h1', {}, 'Sign in'),
-    users.length ? [h('p', { class: 'muted' }, 'Development mode — choose a synthetic account. Production uses GB Prism sign-in.'),
-      h('div', { class: 'grid' }, users.map((u) => h('button', { class: 'btn', onclick: async () => { await api('/api/dev/login', { method: 'POST', body: { userId: u.id } }); location.reload(); } },
-        h('span', {}, h('strong', {}, u.name), h('br'), h('span', { class: 'small muted' }, `${u.roles || 'employee'} · ${u.tenant}`)))))]
-      : h('p', {}, 'Please sign in through GB Prism.')));
-}
+async function login() { document.body.replaceChildren(await signInScreen({ api })); }
 
 // ---------------------------------------------------------------- home --
-async function home() {
-  const d = await api('/api/home');
-  const n = d.next;
-  return h('div', {},
-    h('h1', {}, `Hello, ${ME.name.split(' ')[0]}`),
-    h('div', { class: 'grid' },
-      h('section', { class: 'card hero', 'aria-labelledby': 'next' }, h('h2', { id: 'next' }, 'My next action'), h('p', {}, n.label), n.due ? h('p', { class: 'small muted' }, `Due ${fmtDate(n.due)} (Amman time)`) : null, n.link ? h('a', { class: 'btn primary', href: n.link }, 'Open') : null),
-      h('section', { class: 'card', 'aria-labelledby': 'perf' }, h('h2', { id: 'perf' }, 'My performance'),
-        d.plans.length ? h('ul', {}, d.plans.map((p) => h('li', {}, h('a', { href: `#/review/${p.id}` }, p.cycle), ' ', h('span', { class: `pill ${stateTone(p.state)}` }, p.stateLabel)))) : h('p', { class: 'muted' }, 'No active plan yet.'),
-        d.development_actions.length ? [h('h3', {}, 'Development actions'), h('ul', {}, d.development_actions.map((a) => h('li', {}, a.title, a.due_date ? h('span', { class: 'small muted' }, ` · due ${fmtDate(a.due_date)}`) : null)))] : null),
-      h('section', { class: 'card', 'aria-labelledby': 'to' }, h('h2', { id: 'to' }, 'My time off'),
-        h('table', {}, h('tbody', {}, d.balances.map((b) => h('tr', {}, h('td', {}, b.name), h('td', {}, h('strong', {}, b.posted), ' days'), h('td', { class: 'small muted' }, b.pending !== '0' ? `${b.pending.replace('-', '')} pending` : ''))))),
-        h('p', { class: 'small' }, `Off-site this month: ${d.offsite.used} of ${d.offsite.quota} days`),
-        d.policy_status !== 'approved' ? h('p', { class: 'small muted' }, 'Rules shown are awaiting GB confirmation.') : null),
-      h('section', { class: 'card', 'aria-labelledby': 'rq' }, h('h2', { id: 'rq' }, 'Request time off'), h('p', { class: 'muted' }, 'Leave or off-site work. You will see the working days and your balance before you submit.'), h('a', { class: 'btn primary', href: '#/timeoff' }, 'New request'),
-        d.requests.length ? h('ul', { class: 'small' }, d.requests.map((r) => h('li', {}, `${r.type.name}: ${fmtDate(r.start_date)}${r.end_date !== r.start_date ? ' → ' + fmtDate(r.end_date) : ''} `, h('span', { class: `pill ${stateTone(r.state)}` }, r.state)))) : null)));
-}
+function home() { return homeScreen({ api, me: ME }); }
 
 // --------------------------------------------------------------- inbox --
 async function inbox() {

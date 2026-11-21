@@ -24,6 +24,8 @@ export const PAGES = [
 const GROUPS = ['Workspace', 'Performance', 'Admin'];
 export const pageFor = (hash) => PAGES.find((p) => p.re.test(hash)) || PAGES[0];
 const visible = (me) => PAGES.filter((p) => p.group && (!p.show || p.show(me)));
+/** Apps the person may open, grouped as in the sidebar (used by the Home launcher). */
+export const appsFor = (me) => GROUPS.map((group) => ({ group, items: visible(me).filter((p) => p.group === group) })).filter((g) => g.items.length);
 
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('');
