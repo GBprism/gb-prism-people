@@ -270,6 +270,10 @@ export const MIGRATIONS = [
      reason TEXT NOT NULL, removed_by TEXT NOT NULL, removed_at TEXT NOT NULL,
      restored_by TEXT, restored_at TEXT);
    CREATE INDEX assignment_removals_project ON assignment_removals(project_id);`,
+  // ---- 012 more HR profile facts from the GB team sheets --
+  `ALTER TABLE employee_profiles ADD COLUMN leave_history TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN equipment TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN learning_notes TEXT;`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

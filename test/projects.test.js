@@ -58,3 +58,21 @@ test('inbox: leads see "Confirm team"; partners see projects awaiting approval',
     assert.ok(!emp.items.some((i) => ['Confirm team', 'Approve projects'].includes(i.kind)));
   } finally { srv.close(); }
 });
+
+test('project evidence: adds projects and leads once, never duplicates, skips people not on the roster', async () => {
+  const { applyProjectEvidence } = await import('../src/imports/gbworkbook.js');
+  const { db, as } = fresh();
+  const file = { source: 'test sheet', projects: [
+    { name: 'Sigma', lead: 'Leo Lead', start: '2025-03-01', end: '2025-06-30', assignments: [
+      { name: 'Eli Employee', role: 'Analysis', status: 'historical' }, { name: 'Somebody Else', role: 'Support' }, { name: 'Sara Senior', role: 'Review' }] },
+    { name: 'Internal: Team photos', kind: 'initiative', assignments: [] }] };
+  const r1 = applyProjectEvidence(db, as(SYN.ops), file);
+  assert.equal(r1.projects.length, 2); assert.equal(r1.assignments.length, 2); assert.match(r1.skipped.join(), /Somebody Else/);
+  const r2 = applyProjectEvidence(db, as(SYN.ops), file);
+  assert.equal(r2.projects.length + r2.assignments.length, 0);
+  const rows = db.prepare("SELECT a.status, u.name FROM project_assignments a JOIN projects p ON p.id = a.project_id JOIN users u ON u.id = a.user_id WHERE p.name = 'Sigma' ORDER BY u.name").all();
+  assert.deepEqual(rows.map((x) => [x.name, x.status]), [['Eli Employee', 'historical'], ['Sara Senior', 'tentative']]);
+  assert.equal(db.prepare("SELECT register_status FROM projects WHERE name = 'Sigma'").get().register_status, 'candidate');
+  const dry = applyProjectEvidence(db, as(SYN.ops), { projects: [{ name: 'Tau', assignments: [] }] }, { dry: true });
+  assert.ok(dry.dry); assert.equal(db.prepare("SELECT COUNT(*) n FROM projects WHERE name = 'Tau'").get().n, 0);
+});

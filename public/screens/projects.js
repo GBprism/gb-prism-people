@@ -25,12 +25,14 @@ export async function projectsScreen({ api, me, query = '' }) {
     candidate: (p) => p.register_status === 'candidate',
     mine: (p) => p.team_unconfirmed.some((a) => a.user_id !== me.id && (p.is_lead || (canApprove && a.user_id === p.lead_user_id))),
     proposals: (p) => p.kind === 'proposal',
+    initiatives: (p) => p.kind === 'initiative',
   };
   const chips = filterChips([
     { value: 'all', label: 'All', count: list.length },
     canApprove ? { value: 'candidate', label: 'Awaiting approval', count: count(FILTERS.candidate) } : null,
     { value: 'mine', label: 'To confirm', count: count(FILTERS.mine) },
     { value: 'proposals', label: 'Proposals', count: count(FILTERS.proposals) },
+    { value: 'initiatives', label: 'Internal initiatives', count: count(FILTERS.initiatives) },
   ].filter(Boolean), filter, (v) => { filter = v; draw(); });
 
   function projectCard(p) {

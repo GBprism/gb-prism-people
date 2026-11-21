@@ -214,7 +214,7 @@ export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
   const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
     .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
   const match = nameMatcher(users);
-  const allowed = ['date_of_birth', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status'];
+  const allowed = ['level', 'date_of_birth', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'leave_history', 'equipment', 'learning_notes'];
   const report = { updated: [], skipped: [] };
   const run = () => {
     for (const p of evidence.people || []) {
@@ -225,12 +225,63 @@ export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
       const gaps = (cur?.gaps || '').split(/;\s*/).map((g) => g.trim()).filter((g) => g && !drop.some((d) => g.toLowerCase().startsWith(d)));
       const fields = Object.fromEntries(allowed.filter((k) => p[k]).map((k) => [k, p[k]]));
       if (drop.length) fields.gaps = gaps.join('; ');
-      if (Object.keys(fields).length) updateProfile(db, actor, u.id, fields, { source: 'Gmail evidence (insurer list, contract and probation emails)' });
+      const addGaps = (p.add_gaps || []).filter((g) => !gaps.some((x) => x.toLowerCase() === g.toLowerCase()));
+      if (addGaps.length) fields.gaps = [...gaps, ...addGaps].join('; ');
+      if (Object.keys(fields).length) updateProfile(db, actor, u.id, fields, { source: evidence.source || 'Gmail evidence (insurer list, contract and probation emails)' });
+      if (p.hire_date) {
+        const emp = currentEmployment(db, u.id);
+        if (emp && emp.hire_date !== p.hire_date) db.prepare('UPDATE employments SET hire_date = ? WHERE id = ?').run(p.hire_date, emp.id);
+      }
       if (p.probation_end) {
         const emp = currentEmployment(db, u.id);
         if (emp && emp.probation_end !== p.probation_end) db.prepare('UPDATE employments SET probation_end = ? WHERE id = ?').run(p.probation_end, emp.id);
       }
-      report.updated.push(`${u.name}: ${[...Object.keys(fields), p.probation_end ? 'probation_end' : null].filter(Boolean).join(', ')}`);
+      report.updated.push(`${u.name}: ${[...Object.keys(fields), p.hire_date ? 'hire_date' : null, p.probation_end ? 'probation_end' : null].filter(Boolean).join(', ')}`);
+    }
+    if (dry) throw Object.assign(new Error('dry-run'), { dry: true });
+  };
+  try { tx(db, run); } catch (e) { if (!e.dry) throw e; report.dry = true; }
+  return report;
+}
+
+/**
+ * Add reviewed project history (team task sheets, allocation matrix, running-projects list).
+ * file = { source, projects: [{ name, kind, client, lead, start, end, status, assignments: [{ name, role, start, end, status, source }] }] }
+ * Matches existing projects by kind + name; never downgrades a confirmed assignment; people not on the
+ * roster are listed, not created. Assignments default to 'tentative' (the project lead confirms).
+ */
+export function applyProjectEvidence(db, actor, file, { dry = false } = {}) {
+  const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
+    .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
+  const match = nameMatcher(users);
+  const report = { projects: [], assignments: [], skipped: [] };
+  const run = () => {
+    for (const p of file.projects || []) {
+      const kind = p.kind || 'engagement';
+      const lead = p.lead ? match(p.lead) : null;
+      if (p.lead && !lead) report.skipped.push(`${p.name}: lead ${p.lead} not on the roster`);
+      let prj = db.prepare('SELECT * FROM projects WHERE tenant_id = ? AND kind = ? AND lower(name) = lower(?)').get(actor.tenantId, kind, p.name);
+      if (!prj) {
+        const id = createProject(db, actor, { name: p.name, client: p.client || null, kind, leadUserId: lead?.id || null, status: p.status || 'active', startDate: p.start || null, endDate: p.end || null, sourceRef: p.source || file.source });
+        prj = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+        report.projects.push(`Added ${kind}: ${p.name} (lead ${lead?.name || 'to be set'}${p.status && p.status !== 'active' ? `, ${p.status}` : ''})`);
+      } else {
+        const upd = [];
+        if (!prj.lead_user_id && lead) { db.prepare('UPDATE projects SET lead_user_id = ? WHERE id = ?').run(lead.id, prj.id); upd.push(`lead ${lead.name}`); }
+        if (p.start && (!prj.start_date || p.start < prj.start_date)) { db.prepare('UPDATE projects SET start_date = ? WHERE id = ?').run(p.start, prj.id); upd.push(`start ${p.start}`); }
+        if (upd.length) report.projects.push(`Updated ${p.name}: ${upd.join(', ')}`);
+      }
+      for (const a of p.assignments || []) {
+        const u = match(a.name);
+        if (!u) { report.skipped.push(`${p.name}: ${a.name} not on the roster`); continue; }
+        const role = a.role || 'team member';
+        const ex = db.prepare('SELECT id, status FROM project_assignments WHERE project_id = ? AND user_id = ? AND lower(role) = lower(?)').get(prj.id, u.id, role);
+        if (ex) continue;
+        const status = ['historical', 'provisional', 'tentative'].includes(a.status) ? a.status : 'tentative';
+        db.prepare('INSERT INTO project_assignments (id, tenant_id, project_id, user_id, role, status, start_date, end_date, source) VALUES (?,?,?,?,?,?,?,?,?)')
+          .run(uid('asg_'), actor.tenantId, prj.id, u.id, role, status, a.start || p.start || null, a.end || p.end || null, a.source || p.source || file.source);
+        report.assignments.push(`${u.name} → ${p.name}: ${role} (${status})`);
+      }
     }
     if (dry) throw Object.assign(new Error('dry-run'), { dry: true });
   };

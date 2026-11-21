@@ -43,9 +43,12 @@ function profileBody(p) {
     })) : h('p', { class: 'muted' }, 'No projects in the register yet.'),
     split(p.projects_summary).length ? h('div', {}, h('h3', { class: 'kv-head' }, 'Projects and roles (from the 2026 review workbook)'), h('ul', { class: 'bullets' }, split(p.projects_summary).map((x) => h('li', {}, x)))) : null,
     h('div', {}, h('h3', { class: 'kv-head' }, 'Proposals worked on'), split(p.proposals_summary).length ? h('ul', { class: 'bullets' }, split(p.proposals_summary).map((x) => h('li', {}, x))) : h('p', { class: 'muted' }, 'None recorded.'))) });
+  const more = (p.leave_history || p.equipment || p.learning_notes) ? h('div', { class: 'profile-grid' },
+    card({ title: 'Leave history', iconName: 'history', body: p.leave_history ? h('ul', { class: 'bullets' }, p.leave_history.split(/\s·\s/).map((x) => h('li', {}, x))) : h('p', { class: 'muted' }, 'Not recorded.') }),
+    card({ title: 'Equipment & learning', iconName: 'briefcase', body: kv([['Laptop & software', p.equipment || 'Not in the IT register'], ['Learning', p.learning_notes || '—']]) })) : null;
   const gaps = p.gaps_list.length ? banner({ tone: 'warning', title: 'Still to confirm', text: p.gaps_list.join(' · ') }) : null;
   const foot = h('p', { class: 'profile-note' }, icon('lock'), ` Visible only to ${p.can_edit ? 'this person' : 'you'}, People Ops and partners.`, p.source ? ` Source: ${p.source}${p.updated_at ? `, updated ${fmt(p.updated_at.slice(0, 10))}` : ''}.` : '');
-  return [gaps, h('div', { class: 'profile-grid' }, emp, personal), work, foot];
+  return [gaps, h('div', { class: 'profile-grid' }, emp, personal), work, more, foot];
 }
 
 export async function myProfileScreen({ api }) {
@@ -58,6 +61,7 @@ export async function myProfileScreen({ api }) {
 const EDIT = [
   ['level', 'Level (2026)'], ['probation_status', 'Probation'], ['contract_status', 'Post-probation contract'], ['date_of_birth', 'Date of birth (yyyy-mm-dd)'],
   ['social_security_status', 'Social security'], ['medical_insurance_status', 'Medical insurance'], ['gym_stipend_status', 'Gym stipend'],
+  ['leave_history', 'Leave history (separate years with ·)', true], ['equipment', 'Laptop & software', true], ['learning_notes', 'Learning', true],
   ['projects_summary', 'Projects and roles (separate with ;)', true], ['proposals_summary', 'Proposals (separate with ;)', true], ['gaps', 'Still to confirm (separate with ;)', true],
 ];
 
