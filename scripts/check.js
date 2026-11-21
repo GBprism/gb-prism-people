@@ -19,7 +19,7 @@ try {
   if (bad.length) { failed++; console.error('private or data files tracked by git:', bad); }
 } catch { /* not a git checkout */ }
 // design rule: colours live only in public/tokens.css
-for (const f of ['public/components.css', 'public/styleguide.css', 'public/ui.js']) {
+for (const f of ['public/components.css', 'public/styleguide.css', 'public/ui.js', 'public/shell.js', 'public/app.css']) {
   const hits = fs.readFileSync(f, 'utf8').split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(l) && !/xmlns|http/.test(l));
   for (const [n] of hits) { failed++; console.error(`hard-coded colour: ${f}:${n} (use a token)`); }
 }
