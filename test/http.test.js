@@ -68,3 +68,17 @@ test('HTTP: auth, CSRF, record-level permissions on every entry point', async ()
     assert.equal((await other('/api/leave/balances?userId=' + SYN.emp)).status, 403);
   } finally { srv.close(); }
 });
+
+test('HTTP: malformed request URL from a scanner returns 400 and the server keeps running', async () => {
+  const net = await import('node:net');
+  const { srv, base } = await boot();
+  try {
+    const port = srv.address().port;
+    const raw = await new Promise((resolve) => {
+      const s = net.connect(port, '127.0.0.1', () => s.write('GET http://[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'));
+      let buf = ''; s.on('data', (d) => { buf += d; }); s.on('end', () => resolve(buf)); s.on('error', () => resolve(buf));
+    });
+    assert.match(raw, /^HTTP\/1\.1 (400|404)/);
+    assert.equal((await fetch(`${base}/healthz`)).status, 200);
+  } finally { srv.close(); }
+});

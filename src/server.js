@@ -25,8 +25,9 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
   if (devLogin && process.env.NODE_ENV === 'production') throw new Error('DEV_LOGIN cannot be enabled in production');
   const api = buildApi(db);
   return http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://local');
+    let url;
     try {
+      try { url = new URL(req.url, 'http://local'); } catch { return send(res, 400, { error: 'invalid', message: 'Malformed request' }); }
       if (url.pathname === '/auth/google' && googleCfg) return google.start(googleCfg, res);
       if (url.pathname === '/auth/google/callback' && googleCfg) return await google.callback(googleCfg, db, req, res, url, fetchImpl);
       if (url.pathname === '/healthz') { db.prepare('SELECT 1').get(); return send(res, 200, { ok: true }); }
@@ -84,6 +85,8 @@ function serveStatic(p, res) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // safety net: one bad request must never take the service down
+  process.on('unhandledRejection', (e) => console.error('Unhandled rejection:', e?.message || e));
   const db = openDb();
   if (process.env.DEV_LOGIN === '1') { seedSynthetic(db); seedPlans(db); }
   const port = Number(process.env.PORT || 3000);
