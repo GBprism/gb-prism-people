@@ -1,0 +1,110 @@
+/* =========================================================================
+   GB Prism design tokens — the ONLY place colours, type, spacing, radius,
+   shadows and motion are defined. Components reference var(--…) only.
+   Brand colours are measured from the official GB Advisory logo files.
+   ========================================================================= */
+
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Poppins'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/poppins-latin-600-normal.woff2') format('woff2'); }
+
+:root {
+  /* --- brand (official logo) ------------------------------------------- */
+  --gb-navy: #004281;        /* primary: buttons, links, focus. White on it 10.3:1 */
+  --gb-navy-hover: #00366A;
+  --gb-navy-active: #002A54;
+  --gb-blue: #0080B2;        /* icons, secondary emphasis (4.45:1 on white — not for body text) */
+  --gb-cyan: #00B6DA;        /* accent only: indicator bars, logo bar, charts. Never text on white */
+  --gb-sky: #86D3E5;         /* light facet: charts, subtle highlights */
+  --gb-midnight: #010624;    /* dark brand background (sidebar option A, sign-in panel) */
+  --gb-midnight-2: #0B1640;  /* hover surface on midnight */
+
+  /* --- semantic colour ---------------------------------------------------- */
+  --color-primary: var(--gb-navy);
+  --color-primary-hover: var(--gb-navy-hover);
+  --color-primary-active: var(--gb-navy-active);
+  --color-on-primary: #FFFFFF;
+  --color-primary-tint: #EBF0F6;      /* ≈8% navy on white: active nav, selected rows */
+  --color-primary-tint-strong: #D6E1EE;
+  --color-accent: var(--gb-cyan);
+  --color-focus: var(--gb-navy);
+
+  --color-canvas: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-subtle: #F1F3F6;
+  --color-border: #E3E6EB;
+  --color-border-strong: #CBD1DA;
+  --color-control-border: #858F9E;  /* inputs, checkboxes: 3:1 on white (WCAG 1.4.11) */
+  --color-text: #15181D;
+  --color-text-2: #424A57;
+  --color-text-3: #5C6470;
+  --color-text-on-dark: #FFFFFF;
+  --color-text-on-dark-2: #B8C2D9;
+  --color-danger-on-dark: #FFB4AB;
+  --color-overlay: rgba(1, 6, 36, 0.35);
+  --color-skeleton-hi: #E8EBF0;
+
+  /* status: always paired with an icon and text */
+  --color-success: #11703F;  --color-success-bg: #E7F5EC;  --color-success-border: #B6DFC4;
+  --color-warning: #8A4B00;  --color-warning-bg: #FDF3E1;  --color-warning-border: #F2D19A;
+  --color-danger:  #B42318;  --color-danger-bg:  #FDECEA;  --color-danger-border:  #F5C2BD;
+  --color-info:    #004281;  --color-info-bg:    #EBF0F6;  --color-info-border:    #C5D3E6;
+  --color-neutral: #424A57;  --color-neutral-bg: #F1F3F6;  --color-neutral-border: #E3E6EB;
+
+  /* sidebar themes (A = midnight, B = white) */
+  --sidebar-bg: var(--gb-midnight);
+  --sidebar-text: var(--color-text-on-dark-2);
+  --sidebar-text-active: #FFFFFF;
+  --sidebar-item-hover: var(--gb-midnight-2);
+  --sidebar-item-active: rgba(0, 182, 218, 0.14);
+  --sidebar-indicator: var(--gb-cyan);
+  --sidebar-group-label: #7C88A6;
+  --sidebar-border: transparent;
+
+  /* --- type --------------------------------------------------------------- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Poppins', var(--font-sans);
+  --font-arabic: 'IBM Plex Sans Arabic', var(--font-sans); /* ready for RTL later */
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 15px; --text-lg: 17px; --text-xl: 20px; --text-2xl: 24px; --text-3xl: 30px;
+  --leading-tight: 1.25; --leading: 1.5;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600;
+
+  /* --- space (4px grid) ---------------------------------------------------- */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  --page-pad: 24px;
+  --card-pad: 20px;
+  --section-gap: 20px;
+  --row-h: 44px; --row-h-compact: 36px;
+  --control-h-sm: 32px; --control-h: 36px;
+
+  /* --- shape & depth ------------------------------------------------------- */
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.08);
+  --ring: 0 0 0 3px rgba(0, 66, 129, 0.28);
+  --shadow-up: 0 -4px 12px rgba(16, 24, 40, 0.06);
+
+  /* --- layout ------------------------------------------------------------- */
+  --sidebar-w: 240px; --sidebar-w-collapsed: 64px; --topbar-h: 56px; --content-max: 1440px;
+
+  /* --- icons & motion ------------------------------------------------------ */
+  --icon-sm: 16px; --icon: 20px; --icon-stroke: 1.75;
+  --ease: cubic-bezier(.2, .7, .2, 1); --dur: 140ms;
+  --z-sticky: 10; --z-drawer: 40; --z-modal: 50; --z-toast: 60;
+}
+
+/* Sidebar option B: white sidebar with the dark logo */
+[data-sidebar="light"] {
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: var(--color-text-2);
+  --sidebar-text-active: var(--color-primary);
+  --sidebar-item-hover: var(--color-subtle);
+  --sidebar-item-active: var(--color-primary-tint);
+  --sidebar-indicator: var(--gb-cyan);
+  --sidebar-group-label: var(--color-text-3);
+  --sidebar-border: var(--color-border);
+}
+
+@media (max-width: 640px) { :root { --page-pad: 16px; --card-pad: 16px; } }
+@media (prefers-reduced-motion: reduce) { :root { --dur: 0ms; } }
