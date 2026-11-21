@@ -96,10 +96,24 @@ export function previewRequest(db, actor, input) { return evaluate(db, actor, in
 
 const settingOf = (db, tenantId, key) => { const r = db.prepare('SELECT value_json FROM settings WHERE tenant_id = ? AND key = ?').get(tenantId, key); return r ? P(r.value_json, null) : null; };
 
+/** Is this person away (approved, non off-site leave) on the given day? */
+export function isAway(db, tenantId, userId, day = todayIn()) {
+  return !!db.prepare(`SELECT 1 FROM leave_requests r JOIN leave_types t ON t.id = r.type_id WHERE r.tenant_id = ? AND r.user_id = ? AND r.state = 'approved'
+      AND t.category != 'offsite' AND r.start_date <= ? AND r.end_date >= ?`).get(tenantId, userId, day, day);
+}
+/** Backup approver sees a request once the approver is away or it has waited this many days (default 2). */
+export const escalateDays = (db, tenantId) => Number(settingOf(db, tenantId, 'leave_escalate_days') ?? 2);
+export function waitingForBackup(db, tenantId, r, day = todayIn()) {
+  if (isAway(db, tenantId, r.approver_id, day)) return 'approver away';
+  const waited = Math.floor((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${r.created_at.slice(0, 10)}T00:00:00Z`)) / 864e5);
+  return waited >= escalateDays(db, tenantId) ? `waiting ${waited} days` : null;
+}
+
 /** LeaveBoard → Prism switch-over: requests open only once opening balances are posted at the cutover date. */
 export function leaveStatus(db, tenantId) {
   const cutover = settingOf(db, tenantId, 'leave_cutover');
-  const live = !cutover || !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' LIMIT 1").get(tenantId);
+  // live only once opening balances were posted AT the cutover date (not any older test posting)
+  const live = !cutover || !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' AND effective_date = ? LIMIT 1").get(tenantId, cutover);
   const approverId = settingOf(db, tenantId, 'leave_approver');
   const approver = approverId ? db.prepare('SELECT name FROM users WHERE id = ?').get(approverId)?.name ?? null : null;
   return { cutover, live, approver };
@@ -304,6 +318,27 @@ export function adjustBalance(db, actor, { userId, typeCode, year, amountX100, n
     const after = balance(db, actor.tenantId, userId, t.id, year);
     audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'balance.adjust', entity: 'user', entityId: userId, reason: note, before: { type: typeCode, year, posted: before.posted_x100 }, after: { posted: after.posted_x100 } });
     return after;
+  });
+}
+
+/** Annual entitlement for a year, per person (GB decision E). Idempotent per user/type/year. */
+export function grantEntitlements(db, actor, { year, typeCode = 'AV', rows, note }) {
+  if (!isOps(actor)) throw forbid();
+  if (!Number.isInteger(year)) throw bad('Year required');
+  return tx(db, () => {
+    const t = db.prepare('SELECT * FROM leave_types WHERE tenant_id = ? AND code = ?').get(actor.tenantId, typeCode);
+    if (!t) throw bad('Unknown type');
+    const out = [];
+    for (const r of rows) {
+      const u = db.prepare('SELECT id, name FROM users WHERE id = ? AND tenant_id = ? AND active = 1').get(r.userId, actor.tenantId);
+      if (!u) throw bad(`Unknown person ${r.userId}`);
+      const amt = Math.round(Number(r.days) * 100);
+      if (!(amt > 0)) throw bad(`${u.name}: entitlement must be more than 0 days`);
+      const made = ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year, kind: 'grant', amount: amt, date: `${year}-01-01`, actorId: actor.id, note: note || `${year} entitlement`, key: `grant:${u.id}:${t.id}:${year}` });
+      out.push({ userId: u.id, name: u.name, days_x100: amt, created: made });
+    }
+    audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'balance.grant', entity: 'leave_type', entityId: t.id, reason: note, after: { year, people: out.length, created: out.filter((x) => x.created).length } });
+    return out;
   });
 }
 

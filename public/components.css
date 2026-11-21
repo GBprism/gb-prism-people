@@ -388,3 +388,5 @@ table.data td .badge { max-inline-size: 26ch; }
 @media (max-width: 960px) { .timeoff-grid { grid-template-columns: minmax(0, 1fr); } }
 .stack > *, .profile > *, .timeoff-grid > * { min-inline-size: 0; }
 .empty p { max-inline-size: min(42ch, 100%); }
+.removed summary { cursor: pointer; color: var(--color-text-2); font-size: var(--text-sm); }
+.select.select-sm { block-size: 32px; padding-block: 0; font-size: var(--text-sm); inline-size: auto; }

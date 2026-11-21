@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fresh, SYN } from './helpers.js';
-import { createProject, confirmAssignment } from '../src/domain/projects.js';
+import { createProject, confirmAssignment, restoreAssignment, setProjectLead } from '../src/domain/projects.js';
 
 const add = (db, project, user, status = 'tentative') => {
   const id = `asg_t_${user}_${project}`;
@@ -19,10 +19,21 @@ test('assignments: lead confirms the team, partner confirms the lead, rejection 
   assert.throws(() => confirmAssignment(db, as(SYN.manager), leadOwn), /Only the project lead/);
   assert.equal(confirmAssignment(db, as(SYN.partner), leadOwn).status, 'confirmed');
   assert.throws(() => confirmAssignment(db, as(SYN.partner), team, { decision: 'reject' }), /Only the project lead|cannot be removed/);
-  assert.equal(confirmAssignment(db, as(SYN.lead), wrong, { decision: 'reject' }), null);
+  assert.throws(() => confirmAssignment(db, as(SYN.lead), wrong, { decision: 'reject' }), /why/);
+  const { removed } = confirmAssignment(db, as(SYN.lead), wrong, { decision: 'reject', note: 'only copied on emails' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM project_assignments WHERE id = ?').get(wrong).n, 0);
   assert.ok(db.prepare("SELECT 1 FROM audit_events WHERE action = 'assignment.reject' AND entity_id = ?").get(wrong));
-  assert.throws(() => confirmAssignment(db, as(SYN.lead), team, { decision: 'reject' }), /cannot be removed/);
+  assert.throws(() => confirmAssignment(db, as(SYN.lead), team, { decision: 'reject', note: 'x' }), /cannot be removed/);
+  // a mistaken removal is restored exactly as it was, once
+  assert.throws(() => restoreAssignment(db, as(SYN.emp), removed), /Only the project lead/);
+  restoreAssignment(db, as(SYN.lead), removed);
+  assert.equal(db.prepare('SELECT status FROM project_assignments WHERE id = ?').get(wrong).status, 'provisional');
+  assert.throws(() => restoreAssignment(db, as(SYN.lead), removed), /Already restored/);
+  // partners set a missing lead; others cannot
+  const q = createProject(db, as(SYN.ops), { name: 'No lead yet', kind: 'engagement' });
+  assert.throws(() => setProjectLead(db, as(SYN.lead), q, SYN.lead), /Not permitted/);
+  setProjectLead(db, as(SYN.partner), q, SYN.senior);
+  assert.equal(db.prepare('SELECT lead_user_id FROM projects WHERE id = ?').get(q).lead_user_id, SYN.senior);
 });
 
 test('inbox: leads see "Confirm team"; partners see projects awaiting approval', async () => {

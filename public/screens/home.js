@@ -13,7 +13,7 @@ const APP = {
 };
 const VERB = { 'Approve plan': ['Approve plan', 'reviews'], 'Manager review': ['Review', 'reviews'], Calibrate: ['Calibrate', 'reviews'], 'Hold 1:1 and agree actions': ['Hold 1:1', 'reviews'],
   'Close review': ['Close review', 'reviews'], 'Time-off request': ['Decide', 'timeoff'], 'Off-site request': ['Decide', 'timeoff'], 'Project feedback': ['Give feedback', 'reviews'],
-  'Confirm contribution': ['Confirm', 'projects'], 'Confirm team': ['Confirm team', 'projects'], 'Approve projects': ['Approve', 'projects'], Clarification: ['Answer', 'questions'] };
+  'Confirm contribution': ['Confirm', 'projects'], 'Confirm team': ['Confirm team', 'projects'], 'Approve projects': ['Approve', 'projects'], 'Confirm lead’s work': ['Confirm', 'projects'], Clarification: ['Answer', 'questions'] };
 const todayAmman = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Amman' }).format(new Date());
 const hourAmman = () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Amman', hour: 'numeric', hour12: false }).format(new Date()));
 const fmtDue = (s) => new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

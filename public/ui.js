@@ -189,6 +189,24 @@ export function confirmModal({ title, text, confirmLabel = 'Confirm', tone = 'pr
   });
 }
 
+/** Modal asking for a short text (e.g. a reason). Resolves the trimmed text, or null if cancelled. */
+export function promptModal({ title, text, label, confirmLabel = 'Confirm', tone = 'primary', required = true, placeholder = '' }) {
+  return new Promise((resolve) => {
+    const overlay = h('div', { class: 'overlay' });
+    const ta = h('textarea', { class: 'textarea', id: 'prompt-modal-input', rows: 3, placeholder });
+    const err = h('p', { class: 'field-error', role: 'alert', hidden: true }, 'Please fill this in.');
+    const m = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' });
+    const done = (v) => { release(); overlay.remove(); m.remove(); resolve(v); };
+    const ok = () => { const v = ta.value.trim(); if (required && !v) { err.hidden = false; ta.focus(); return; } done(v); };
+    m.append(h('header', { class: 'modal-header' }, h('h2', {}, title)),
+      h('div', { class: 'modal-body' }, text ? h('p', {}, text) : null, h('label', { for: 'prompt-modal-input', class: 'field-label' }, label), ta, err),
+      h('footer', { class: 'modal-footer' }, button('Cancel', { variant: 'secondary', onClick: () => done(null) }), button(confirmLabel, { variant: tone === 'danger' ? 'danger' : 'primary', onClick: ok })));
+    overlay.addEventListener('click', () => done(null));
+    document.body.append(overlay, m);
+    const release = trap(m, () => done(null));
+  });
+}
+
 export function toast(text, tone = 'success') {
   let stack = document.querySelector('.toast-stack');
   if (!stack) { stack = h('div', { class: 'toast-stack', 'aria-live': 'polite' }); document.body.append(stack); }

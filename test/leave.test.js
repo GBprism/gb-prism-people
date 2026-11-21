@@ -142,3 +142,20 @@ test('GB rules: one leave approver for everyone; requests wait for the LeaveBoar
   const closed = leave.previewRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2027-01-10', end: '2027-01-10', coverUserId: SYN.senior });
   assert.ok(closed.blocking.some((b) => /LeaveBoard cutover on 2026-12-31/.test(b)));
 }));
+
+test('backup approver: sees a request only when the approver is away or it has waited 2 days', () => {
+  const { db, as } = fresh();
+  const set = (k, v) => db.prepare('INSERT INTO settings (tenant_id, key, value_json) VALUES (?,?,?) ON CONFLICT(tenant_id, key) DO UPDATE SET value_json = excluded.value_json').run('gb', k, JSON.stringify(v));
+  set('leave_approver', SYN.manager);
+  const r = withToday(T, () => leave.submitRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2026-12-07', end: '2026-12-07', coverUserId: SYN.senior, clientKey: 'bk' }));
+  const row = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(r.id);
+  assert.equal(row.approver_id, SYN.manager); assert.ok(row.backup_approver_id && row.backup_approver_id !== SYN.manager);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, T), null);
+  assert.match(leave.waitingForBackup(db, 'gb', row, '2026-11-21'), /waiting 2 days/);
+  set('leave_escalate_days', 5);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, '2026-11-21'), null);
+  // approver on approved leave today → backup sees it at once
+  db.prepare(`INSERT INTO leave_requests (id, tenant_id, user_id, type_id, start_date, end_date, chargeable_x100, breakdown_json, state, created_at)
+    VALUES ('away', 'gb', ?, 'lt_AV', ?, ?, 100, '{}', 'approved', ?)`).run(SYN.manager, T, T, T);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, T), 'approver away');
+});

@@ -1,6 +1,7 @@
 // GB leave rules that are decisions, not data:
 //   node scripts/set-leave-rules.js --approver layan@gb-advisory.com --cutover 2026-12-31 [--db data/prism-people.db]
 // --approver  one person approves every employee's leave; their own requests go to their manager/backup.
+// --escalate-days N  the backup approver (the approver's manager) sees requests after N days, or at once when the approver is on leave (default 2).
 // --cutover   LeaveBoard stays the system of record up to this date. Prism opens time-off requests once
 //             opening balances are posted at the cutover (load-gb-all.js --cutover <date> with a year-end export).
 import { openDb, J, audit } from '../src/db.js';
@@ -24,4 +25,9 @@ if (cutover) {
   const live = db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' LIMIT 1").get(tenant);
   console.log(`LeaveBoard cutover: ${cutover} — Prism time off is ${live ? 'open (opening balances posted)' : 'closed until opening balances are posted at the cutover'}`);
 }
-if (!email && !cutover) console.log('Nothing to do: pass --approver and/or --cutover');
+const esc = arg('escalate-days');
+if (esc) {
+  if (!/^\d+$/.test(esc)) { console.error('--escalate-days must be a whole number'); process.exit(1); }
+  set('leave_escalate_days', Number(esc)); console.log(`Backup approver sees requests after ${esc} day(s), or at once when the approver is away`);
+}
+if (!email && !cutover && !esc) console.log('Nothing to do: pass --approver, --cutover and/or --escalate-days');

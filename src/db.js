@@ -264,6 +264,12 @@ export const MIGRATIONS = [
      plan_id TEXT PRIMARY KEY REFERENCES plans(id), tenant_id TEXT NOT NULL,
      rationale TEXT, status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','confirmed','change_requested')),
      source TEXT, confirmed_by TEXT, confirmed_at TEXT, updated_at TEXT NOT NULL);`,
+  // ---- 011 removed project assignments: kept whole so a mistaken removal can be restored --
+  `CREATE TABLE assignment_removals (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL, assignment_json TEXT NOT NULL,
+     reason TEXT NOT NULL, removed_by TEXT NOT NULL, removed_at TEXT NOT NULL,
+     restored_by TEXT, restored_at TEXT);
+   CREATE INDEX assignment_removals_project ON assignment_removals(project_id);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

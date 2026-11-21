@@ -26,6 +26,17 @@ export function approveProject(db, actor, projectId) {
   audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'project.approve', entity: 'project', entityId: projectId });
 }
 
+/** Partners / People Ops set or change a project's lead (the person who confirms the team). */
+export function setProjectLead(db, actor, projectId, leadUserId) {
+  if (!isOps(actor) && !has(actor, 'partner')) throw forbid();
+  assertTenantProject(db, actor, projectId); assertTenantUsers(db, actor, leadUserId);
+  if (!leadUserId) throw bad('Choose a lead');
+  const before = db.prepare('SELECT lead_user_id FROM projects WHERE id = ?').get(projectId).lead_user_id;
+  db.prepare('UPDATE projects SET lead_user_id = ? WHERE id = ?').run(leadUserId, projectId);
+  audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'project.lead', entity: 'project', entityId: projectId, before: { leadUserId: before }, after: { leadUserId } });
+  return { ok: true };
+}
+
 export function addAssignment(db, actor, { projectId, userId, role, status = 'provisional', startDate, endDate, source }) {
   assertTenantProject(db, actor, projectId); assertTenantUsers(db, actor, userId);
   if (!isOps(actor) && !isLead(db, actor, projectId)) throw forbid();
@@ -51,14 +62,34 @@ export function confirmAssignment(db, actor, assignmentId, { decision = 'confirm
     if (decision === 'reject') {
       if (['confirmed', 'historical'].includes(a.status)) throw conflict('Confirmed work cannot be removed here');
       if (db.prepare('SELECT 1 FROM feedback_invites WHERE assignment_id = ? UNION SELECT 1 FROM project_feedback WHERE assignment_id = ?').get(assignmentId, assignmentId)) throw conflict('Feedback already refers to this assignment');
-      audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'assignment.reject', entity: 'project_assignment', entityId: assignmentId, reason: note, before: a });
+      if (!String(note || '').trim()) throw bad('Say briefly why this person was not on the project');
+      const rid = uid('arm_');
+      db.prepare('INSERT INTO assignment_removals (id, tenant_id, project_id, assignment_json, reason, removed_by, removed_at) VALUES (?,?,?,?,?,?,?)')
+        .run(rid, actor.tenantId, a.project_id, JSON.stringify(a), String(note).trim(), actor.id, now());
+      audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'assignment.reject', entity: 'project_assignment', entityId: assignmentId, reason: note, before: a, after: { removal: rid } });
       db.prepare('DELETE FROM project_assignments WHERE id = ?').run(assignmentId);
-      return null;
+      return { removed: rid };
     }
     db.prepare("UPDATE project_assignments SET status = 'confirmed', role = COALESCE(?, role), start_date = COALESCE(?, start_date), end_date = COALESCE(?, end_date), confirmed_by = ?, confirmed_at = ? WHERE id = ?")
       .run(role ?? null, startDate ?? null, endDate ?? null, actor.id, now(), assignmentId);
     audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: `assignment.${decision}`, entity: 'project_assignment', entityId: assignmentId, reason: note, before: { status: a.status } });
     return db.prepare('SELECT * FROM project_assignments WHERE id = ?').get(assignmentId);
+  });
+}
+
+/** Put back an assignment removed by mistake, exactly as it was (same id and status). */
+export function restoreAssignment(db, actor, removalId) {
+  return tx(db, () => {
+    const r = db.prepare('SELECT * FROM assignment_removals WHERE id = ? AND tenant_id = ?').get(removalId, actor.tenantId);
+    if (!r) throw notFound();
+    if (r.restored_at) throw conflict('Already restored');
+    if (!isLead(db, actor, r.project_id) && !isOps(actor) && !has(actor, 'partner')) throw forbid('Only the project lead, a partner or People Ops can restore');
+    const a = JSON.parse(r.assignment_json);
+    db.prepare(`INSERT INTO project_assignments (id, tenant_id, project_id, user_id, role, status, start_date, end_date, source, confirmed_by, confirmed_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(a.id, a.tenant_id, a.project_id, a.user_id, a.role, a.status, a.start_date, a.end_date, a.source, a.confirmed_by, a.confirmed_at);
+    db.prepare('UPDATE assignment_removals SET restored_by = ?, restored_at = ? WHERE id = ?').run(actor.id, now(), removalId);
+    audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'assignment.restore', entity: 'project_assignment', entityId: a.id, after: { removal: removalId } });
+    return a;
   });
 }
 
@@ -121,6 +152,10 @@ export function registerView(db, actor, { projectId } = {}) {
         ...d, contributions: db.prepare('SELECT c.id, c.user_id, u.name, c.responsibility, c.status, c.description, c.evidence_url, c.review_note FROM contributions c JOIN users u ON u.id = c.user_id WHERE c.deliverable_id = ?').all(d.id) }));
       return { ...p, is_lead: p.lead_user_id === actor.id,
         team_confirmed: asg.filter((a) => a.status === 'confirmed'), team_historical: asg.filter((a) => a.status === 'historical'),
-        team_unconfirmed: asg.filter((a) => a.status === 'provisional' || a.status === 'tentative'), deliverables: dels };
+        team_unconfirmed: asg.filter((a) => a.status === 'provisional' || a.status === 'tentative'), deliverables: dels,
+        removed: (ops || has(actor, 'partner') || p.lead_user_id === actor.id) ? db.prepare(`SELECT r.id, r.reason, r.removed_at, r.assignment_json, u.name removed_by FROM assignment_removals r
+            LEFT JOIN users u ON u.id = r.removed_by WHERE r.project_id = ? AND r.restored_at IS NULL ORDER BY r.removed_at DESC`).all(p.id)
+          .map((r) => { const a = JSON.parse(r.assignment_json); return { id: r.id, reason: r.reason, removed_at: r.removed_at, removed_by: r.removed_by, role: a.role,
+            name: db.prepare('SELECT name FROM users WHERE id = ?').get(a.user_id)?.name }; }) : [] };
     });
 }
