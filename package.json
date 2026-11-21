@@ -14,7 +14,8 @@
     "demo": "node --no-warnings scripts/demo.js",
     "test": "node --no-warnings --test test/*.test.js",
     "check": "node --no-warnings scripts/check.js && npm test",
-    "build:assets": "node --no-warnings scripts/build-assets.js"
+    "build:assets": "node --no-warnings scripts/build-assets.js",
+    "test:e2e": "node --no-warnings --test test/e2e/*.e2e.mjs"
   },
   "dependencies": {
     "exceljs": "4.4.0"

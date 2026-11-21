@@ -1,5 +1,7 @@
 // GB Prism People & Performance — client. Plain ES modules, no build step.
 // All DOM is created with h() (textContent), never innerHTML with data.
+import { mountShell, pageFor } from '/shell.js';
+import { pageHeader, emptyState, skeletonLines, button as uiButton } from '/ui.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -38,30 +40,43 @@ const routes = [
   [/^#\/?$/, home], [/^#\/inbox$/, inbox], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, timeoff], [/^#\/request\/(.+)$/, requestPage],
   [/^#\/history$/, history], [/^#\/projects$/, projects], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
 ];
+let SHELL = null;
 async function boot() {
   try { ME = await api('/api/me'); } catch (e) { if (e.status === 401) return login(); throw e; }
-  const nav = [['#/', 'Home'], ME.nav.inbox && ['#/inbox', 'Team inbox'], ['#/timeoff', 'Time off'], ['#/history', 'My reviews'], ['#/projects', 'Projects'], ['#/ai', 'AI examples'], ME.nav.admin && ['#/admin', 'Admin']].filter(Boolean);
-  $('#nav').replaceChildren(...nav.map(([href, t]) => h('a', { href }, t)));
-  $('#who').replaceChildren(h('span', {}, `${ME.name}${ME.title ? ' · ' + ME.title : ''}`), h('button', { class: 'btn small', onclick: async () => { await api('/api/logout', { method: 'POST' }); location.hash = '#/'; location.reload(); } }, 'Sign out'));
+  SHELL = mountShell({ me: ME, api, onSignOut: async () => { await api('/api/logout', { method: 'POST' }); location.hash = '#/'; location.reload(); } });
   window.addEventListener('hashchange', render);
   render();
 }
 async function render() {
   const hash = location.hash || '#/';
-  for (const a of document.querySelectorAll('nav a')) a.toggleAttribute('aria-current', hash === a.getAttribute('href') || (a.getAttribute('href') !== '#/' && hash.startsWith(a.getAttribute('href'))));
-  document.querySelectorAll('nav a[aria-current]').forEach((a) => a.setAttribute('aria-current', 'page'));
-  $('#banner').replaceChildren();
-  const main = $('#main');
-  main.replaceChildren(h('p', { class: 'muted' }, 'Loading…'));
+  const page = pageFor(hash);
+  SHELL.setPage(hash);
+  const banner = SHELL.banner; banner.replaceChildren();
+  const main = SHELL.main;
+  const container = h('div', { class: 'page legacy' }, banner, skeletonLines(5));
+  main.replaceChildren(container);
   for (const [re, fn] of routes) {
     const m = re.exec(hash);
-    if (m) { try { main.replaceChildren(await fn(...m.slice(1))); } catch (e) { main.replaceChildren(errorBox(e)); } main.focus({ preventScroll: true }); return; }
+    if (!m) continue;
+    let node;
+    try { node = await fn(...m.slice(1)); } catch (e) { node = errorBox(e); }
+    // standard page template: icon + title + one-line description; the screen's own h1 supplies the title text
+    const h1 = node.querySelector?.('h1');
+    const titleText = h1?.textContent?.trim();
+    const header = pageHeader({ iconName: page.icon, title: titleText || page.title, description: page.desc });
+    if (h1) h1.replaceWith(header); else node.prepend?.(header);
+    if (page.parent && titleText) SHELL.setPage(hash, titleText);
+    container.replaceChildren(banner, node);
+    main.focus({ preventScroll: true });
+    SHELL.refreshInbox();
+    return;
   }
-  main.replaceChildren(h('p', {}, 'Page not found.'));
+  container.replaceChildren(banner, emptyState({ iconName: 'circle-help', title: 'Page not found', text: 'The link may be out of date.', action: uiButton('Go to Home', { variant: 'primary', iconName: 'house', href: '#/' }) }));
 }
 async function login() {
   let users = []; let cfg = {};
   try { cfg = await api('/api/auth/config'); } catch { /* ignore */ }
+  $('#main').classList.add('page', 'legacy');
   if (cfg.google) {
     return $('#main').replaceChildren(h('div', { class: 'card' }, h('h1', {}, 'Sign in'), h('p', { class: 'muted' }, `Use your @${cfg.domain} Google Workspace account.`), h('a', { class: 'btn primary', href: '/auth/google' }, 'Sign in with Google')));
   }
@@ -414,9 +429,8 @@ async function myAi() {
 
 // --------------------------------------------------------------- admin --
 async function admin(tab = 'dashboard') {
-  const tabs = [['dashboard', 'Completion'], ['roster', 'Roster'], ['imports', 'Import center'], ['policy', 'Policy settings'], ['reminders', 'Reminders'], ['ai', 'AI adoption'], ['audit', 'Audit log']];
-  const body = await ({ dashboard: adminDashboard, roster: adminRoster, imports: adminImports, policy: adminPolicy, reminders: adminReminders, ai: adminAi, audit: adminAudit }[tab] || adminDashboard)();
-  return h('div', {}, h('h1', {}, 'Administration'), h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, t]) => h('button', { role: 'tab', 'aria-selected': String(k === tab), onclick: () => { location.hash = `#/admin/${k}`; } }, t))), body);
+  // sub-pages are listed in the sidebar (Admin group); the page header comes from the shell
+  return await ({ dashboard: adminDashboard, roster: adminRoster, imports: adminImports, policy: adminPolicy, reminders: adminReminders, ai: adminAi, audit: adminAudit }[tab] || adminDashboard)();
 }
 async function adminDashboard() {
   const d = await api('/api/admin/dashboard');
