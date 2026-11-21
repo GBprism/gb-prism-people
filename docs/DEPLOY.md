@@ -102,7 +102,7 @@ This pulls the latest code from GitHub and restarts the app. Data, settings and 
 The "2026 PMS – Consultant Reviewers" workbook holds personal data. Copy it straight to the server, never into git.
 
 ```bash
-sudo -u prism node --no-warnings scripts/load-gb-workbook.js --file /path/to/workbook.xlsx --db /var/lib/gb-prism/prism-people.db --dry-run
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-workbook.js --file /tmp/reviewers.xlsx --db /var/lib/gb-prism/prism-people.db --dry-run
 ```
 
 Read the report, then run the same command without `--dry-run`. Re-running it is safe. Run it again after the 2026 forms are imported, so senior consultants' reviews get their reviewers too.
