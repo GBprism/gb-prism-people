@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fresh, SYN, xlsx } from './helpers.js';
 import { getProfile, updateProfile, listProfiles } from '../src/domain/profiles.js';
-import { parseGbWorkbook, applyGbWorkbook, nameMatcher, parseWhen } from '../src/imports/gbworkbook.js';
+import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, nameMatcher, parseWhen } from '../src/imports/gbworkbook.js';
 import { planView, decideReviewerNote } from '../src/domain/performance.js';
 
 test('HR profile: only the person, People Ops and partners can see it; only Ops/partners edit', () => {
@@ -120,4 +120,17 @@ test('HTTP: profile endpoints enforce the same visibility', async () => {
     assert.equal((await (await mgr('/api/me')).json()).nav.people, false);
     assert.equal((await (await ops('/api/me')).json()).nav.people, true);
   } finally { srv.close(); }
+});
+
+test('HR evidence from email fills profile fields, clears matching gaps, ignores other keys', () => {
+  const { db, as } = fresh();
+  updateProfile(db, as(SYN.ops), SYN.emp, { gaps: 'DOB; insurance enrollment; confirm gym claims' });
+  const r = applyHrEvidence(db, as(SYN.ops), { people: [
+    { name: 'Eli Employee', date_of_birth: '2001-03-04', medical_insurance_status: 'Enrolled – insurer list', probation_end: '2026-01-19', salary: 999, remove_gaps: ['DOB', 'insurance'] },
+    { name: 'Nobody Here', date_of_birth: '1990-01-01' } ] });
+  assert.equal(r.skipped.length, 1);
+  const p = getProfile(db, as(SYN.ops), SYN.emp);
+  assert.equal(p.date_of_birth, '2001-03-04'); assert.equal(p.probation_end, '2026-01-19');
+  assert.deepEqual(p.gaps_list, ['confirm gym claims']);
+  assert.ok(!JSON.stringify(db.prepare('SELECT * FROM employee_profiles').all()).includes('999'));
 });

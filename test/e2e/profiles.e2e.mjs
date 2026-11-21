@@ -9,7 +9,7 @@ import { createProject } from '../../src/domain/projects.js';
 
 let chromium = null;
 try { ({ chromium } = createRequire(import.meta.url)('playwright')); } catch { /* not installed */ }
-const SHOTS = process.env.SHOTS; // e.g. docs/redesign/profiles
+const SHOTS = process.env.SHOTS; // a scratch folder; never commit screenshots of real people
 
 test('profiles: my profile, people directory, drawer edit, no errors', { skip: !chromium && 'playwright not installed' }, async () => {
   const { db, as } = fresh();

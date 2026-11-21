@@ -357,3 +357,6 @@ button.nav-item { inline-size: 100%; border: 0; background: transparent; font: i
 .cell-sub { font-size: var(--text-sm); }
 .reviewer-note { display: grid; gap: var(--space-2); }
 .nowrap { white-space: nowrap; }
+/* long free-text statuses (HR profile) wrap instead of widening the table or card */
+.kv .badge, table.data td .badge { white-space: normal; max-inline-size: 100%; text-align: start; }
+table.data td .badge { max-inline-size: 26ch; }

@@ -97,12 +97,16 @@ This pulls the latest code from GitHub and restarts the app. Data, settings and 
 | GB private config | `/opt/gb-prism/config/private` |
 | Logs | `sudo journalctl -u gb-prism -n 100` |
 
-## Loading the 2026 review workbook (profiles, reviewers, project log)
+## Loading GB's real data (one command)
 
-The "2026 PMS – Consultant Reviewers" workbook holds personal data. Copy it straight to the server, never into git.
+All real data lives in a private folder that is never committed: roster, decisions, 2026 forms, the 2025 PMS tab, LeaveBoard exports, the reviewer workbook and `hr-evidence.json` (facts checked against email). Upload the private bundle `gb-real-data.zip` to the server, then:
 
 ```bash
-cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-workbook.js --file /tmp/reviewers.xlsx --db /var/lib/gb-prism/prism-people.db --dry-run
+sudo mkdir -p /opt/gb-prism/config/private/real && sudo unzip -o ~/gb-real-data.zip -d /opt/gb-prism/config/private/real && sudo chown -R gbprism /opt/gb-prism/config/private && rm ~/gb-real-data.zip
 ```
 
-Read the report, then run the same command without `--dry-run`. Re-running it is safe. Run it again after the 2026 forms are imported, so senior consultants' reviews get their reviewers too.
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-all.js --dir config/private/real --db /var/lib/gb-prism/prism-people.db --dry-run
+```
+
+Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-dd` only once GB has set the LeaveBoard cutover date; this posts opening balances. Re-running is safe. Restart afterwards with `sudo systemctl restart gb-prism`.

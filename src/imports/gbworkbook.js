@@ -204,3 +204,36 @@ export function applyGbWorkbook(db, actor, parsed, { cycleId, year = 2026, dry =
   try { tx(db, run); } catch (e) { if (!e.dry) throw e; report.dry = true; }
   return report;
 }
+
+/**
+ * Apply verified HR facts found in email (insurer member list, contract and probation emails)
+ * on top of the workbook. evidence = { sources, people: [{ name, <profile fields>, probation_end, remove_gaps: [] }] }.
+ * Only profile fields are accepted; anything else in the file is ignored.
+ */
+export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
+  const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
+    .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
+  const match = nameMatcher(users);
+  const allowed = ['date_of_birth', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status'];
+  const report = { updated: [], skipped: [] };
+  const run = () => {
+    for (const p of evidence.people || []) {
+      const u = match(p.name);
+      if (!u) { report.skipped.push(`${p.name} — not on the roster`); continue; }
+      const cur = db.prepare('SELECT gaps FROM employee_profiles WHERE user_id = ?').get(u.id);
+      const drop = (p.remove_gaps || []).map((g) => g.toLowerCase());
+      const gaps = (cur?.gaps || '').split(/;\s*/).map((g) => g.trim()).filter((g) => g && !drop.some((d) => g.toLowerCase().startsWith(d)));
+      const fields = Object.fromEntries(allowed.filter((k) => p[k]).map((k) => [k, p[k]]));
+      if (drop.length) fields.gaps = gaps.join('; ');
+      if (Object.keys(fields).length) updateProfile(db, actor, u.id, fields, { source: 'Gmail evidence (insurer list, contract and probation emails)' });
+      if (p.probation_end) {
+        const emp = currentEmployment(db, u.id);
+        if (emp && emp.probation_end !== p.probation_end) db.prepare('UPDATE employments SET probation_end = ? WHERE id = ?').run(p.probation_end, emp.id);
+      }
+      report.updated.push(`${u.name}: ${[...Object.keys(fields), p.probation_end ? 'probation_end' : null].filter(Boolean).join(', ')}`);
+    }
+    if (dry) throw Object.assign(new Error('dry-run'), { dry: true });
+  };
+  try { tx(db, run); } catch (e) { if (!e.dry) throw e; report.dry = true; }
+  return report;
+}
