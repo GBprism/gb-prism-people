@@ -13,6 +13,8 @@ export const PAGES = [
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', parent: 'history', desc: null },
   { key: 'projects', re: /^#\/projects$/, href: '#/projects', title: 'Projects', icon: 'folder-kanban', group: 'Performance', desc: 'Engagements, deliverables and who contributed what' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', group: 'Performance', desc: 'Examples of AI-assisted work and seat confirmations' },
+  { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', group: 'Workspace', desc: 'Your employment details, benefits and 2026 work — visible to you, People Ops and partners only' },
+  { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', group: 'Admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
   { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Completion', icon: 'layout-dashboard', group: 'Admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },
   { key: 'admin-roster', re: /^#\/admin\/roster$/, href: '#/admin/roster', title: 'Roster', icon: 'users', group: 'Admin', desc: 'People, roles, managers and probation dates', show: (me) => me.nav.admin },
   { key: 'admin-imports', re: /^#\/admin\/imports$/, href: '#/admin/imports', title: 'Imports', icon: 'cloud-upload', group: 'Admin', desc: 'Bring in PMS forms and LeaveBoard exports safely', show: (me) => me.nav.admin },
@@ -54,6 +56,7 @@ export function mountShell({ me, api, onSignOut }) {
   const bell = button('', { variant: 'ghost', iconName: 'bell', ariaLabel: 'Waiting for you', title: 'Waiting for you', href: '#/inbox' });
   const userMenu = h('div', { class: 'menu', role: 'menu', hidden: true },
     h('div', { class: 'menu-head' }, h('strong', {}, me.name), me.title ? h('span', { class: 'muted' }, me.title) : null),
+    h('a', { class: 'menu-item', role: 'menuitem', href: '#/profile' }, icon('id-card'), 'My profile'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/history' }, icon('clipboard-check'), 'My reviews'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/timeoff' }, icon('calendar-days'), 'My time off'),
     h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: onSignOut }, icon('log-out', { flip: true }), 'Sign out'));

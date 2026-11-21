@@ -96,3 +96,13 @@ This pulls the latest code from GitHub and restarts the app. Data, settings and 
 | Secrets and settings | `/etc/gb-prism/env` (readable only by root and the app) |
 | GB private config | `/opt/gb-prism/config/private` |
 | Logs | `sudo journalctl -u gb-prism -n 100` |
+
+## Loading the 2026 review workbook (profiles, reviewers, project log)
+
+The "2026 PMS – Consultant Reviewers" workbook holds personal data. Copy it straight to the server, never into git.
+
+```bash
+sudo -u prism node --no-warnings scripts/load-gb-workbook.js --file /path/to/workbook.xlsx --db /var/lib/gb-prism/prism-people.db --dry-run
+```
+
+Read the report, then run the same command without `--dry-run`. Re-running it is safe. Run it again after the 2026 forms are imported, so senior consultants' reviews get their reviewers too.

@@ -499,6 +499,10 @@ export function planView(db, actor, planId) {
     view.inputs = db.prepare('SELECT i.label, i.body, i.evidence_url, i.created_at, u.name author FROM plan_inputs i JOIN users u ON u.id = i.author_id WHERE i.plan_id = ? ORDER BY i.created_at').all(planId);
     view.input_invites = db.prepare('SELECT i.label, u.name, EXISTS(SELECT 1 FROM plan_inputs x WHERE x.plan_id = i.plan_id AND x.author_id = i.invitee_id) given FROM plan_input_invites i JOIN users u ON u.id = i.invitee_id WHERE i.plan_id = ?').all(planId);
   }
+  if (c.relation !== 'self') {
+    const n = db.prepare('SELECT n.rationale, n.status, n.source, n.confirmed_at, u.name confirmed_by FROM plan_reviewer_notes n LEFT JOIN users u ON u.id = n.confirmed_by WHERE n.plan_id = ?').get(planId);
+    if (n) view.reviewer_note = { ...n, can_decide: has(actor, 'partner') || isOps(actor) };
+  }
   if (c.viewProjectFeedback) view.project_feedback = db.prepare(`SELECT f.*, u.name author, p.name project FROM project_feedback f JOIN users u ON u.id = f.author_id
       JOIN project_assignments pa ON pa.id = f.assignment_id JOIN projects p ON p.id = pa.project_id WHERE f.plan_id = ?`).all(planId);
   if (c.relation === 'self' || c.relation === 'reviewer' || c.relation === 'partner') {
@@ -569,5 +573,22 @@ export function addInput(db, actor, planId, { body, evidenceUrl }) {
     db.prepare('INSERT INTO plan_inputs (id, tenant_id, plan_id, author_id, label, body, evidence_url, created_at) VALUES (?,?,?,?,?,?,?,?)').run(id, plan.tenant_id, planId, actor.id, c.giveInput, body, evidenceUrl ?? null, now());
     audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.input', entity: 'plan', entityId: planId });
     return id;
+  });
+}
+
+/** Partners (or People Ops) confirm the reviewer choice, or ask for a change. */
+export function decideReviewerNote(db, actor, planId, { decision, note } = {}) {
+  if (!has(actor, 'partner') && !isOps(actor)) throw forbid();
+  const plan = getPlan(db, planId);
+  if (plan.tenant_id !== actor.tenantId) throw notFound();
+  if (!['confirm', 'change'].includes(decision)) throw bad('decision must be confirm or change');
+  return tx(db, () => {
+    const cur = db.prepare('SELECT * FROM plan_reviewer_notes WHERE plan_id = ?').get(planId);
+    if (!cur) db.prepare("INSERT INTO plan_reviewer_notes (plan_id, tenant_id, status, updated_at) VALUES (?,?,'draft',?)").run(planId, plan.tenant_id, now());
+    const status = decision === 'confirm' ? 'confirmed' : 'change_requested';
+    db.prepare('UPDATE plan_reviewer_notes SET status = ?, confirmed_by = ?, confirmed_at = ?, updated_at = ?, rationale = CASE WHEN ? IS NULL THEN rationale ELSE COALESCE(rationale || char(10), \'\') || ? END WHERE plan_id = ?')
+      .run(status, actor.id, now(), now(), note || null, note ? `Note: ${note}` : null, planId);
+    audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: `reviewers.${status}`, entity: 'plan', entityId: planId, reason: note || null });
+    return { status };
   });
 }

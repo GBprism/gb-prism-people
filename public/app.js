@@ -5,6 +5,7 @@ import { pageHeader, emptyState, skeletonLines, button as uiButton } from '/ui.j
 import { importsScreen } from '/screens/imports.js';
 import { homeScreen } from '/screens/home.js';
 import { signInScreen } from '/screens/signin.js';
+import { myProfileScreen, peopleScreen } from '/screens/people.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -42,6 +43,7 @@ let ME = null;
 const routes = [
   [/^#\/?$/, home], [/^#\/inbox$/, inbox], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, timeoff], [/^#\/request\/(.+)$/, requestPage],
   [/^#\/history$/, history], [/^#\/projects$/, projects], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
+  [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {
@@ -134,6 +136,15 @@ async function review(id) {
   if (editSelf && v.cycle.self_due) root.append(h('p', {}, `Please complete by ${fmtDate(v.cycle.self_due)} (Amman time). Changes save automatically.`));
 
   if (v.category_reviewers?.length) root.append(h('p', { class: 'small' }, 'Section reviewers: ', v.category_reviewers.map((r) => `${CAT[r.category]} — ${r.name}`).join(' · '), ` · Lead reviewer: ${v.reviewer?.name || '—'}`));
+  if (v.reviewer_note) {
+    const n = v.reviewer_note; const tone = n.status === 'confirmed' ? 'ok' : n.status === 'change_requested' ? 'danger' : 'warn';
+    const label = { confirmed: 'Reviewers confirmed', change_requested: 'Change of reviewer requested', draft: 'Reviewers in draft — partner to confirm' }[n.status];
+    root.append(h('div', { class: 'card reviewer-note' }, h('p', {}, h('span', { class: `pill ${tone}` }, label), n.confirmed_by ? h('span', { class: 'small muted' }, ` by ${n.confirmed_by}`) : null),
+      n.rationale ? h('p', { class: 'small' }, 'Why these reviewers: ', n.rationale) : null,
+      n.can_decide && n.status !== 'confirmed' ? h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'confirm' } }), 'Reviewers confirmed').then(render) }, 'Confirm reviewers'),
+        h('button', { class: 'btn', onclick: () => { const note = prompt('What should change?'); if (note) act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'change', note } }), 'Change requested').then(render); } }, 'Ask for a change')) : null));
+  }
   // weights summary
   root.append(h('p', { class: 'small' }, 'Weights: ', Object.entries(v.category_weights).filter(([, w]) => w).map(([c, w]) => `${CAT[c]} ${w}%`).join(' · ')));
 
