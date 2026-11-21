@@ -125,3 +125,20 @@ test('carryover capped at 10 days and expiry of unused carryover', () => withTod
   leave.runCarryoverExpiry(db, ops, { year: 2027 });
   assert.equal(bal(db, SYN.emp, 'AV', 2027).posted_x100, 0);
 }));
+
+test('GB rules: one leave approver for everyone; requests wait for the LeaveBoard cutover', () => withToday(T, () => {
+  const { db, as } = fresh();
+  const set = (k, v) => db.prepare('INSERT INTO settings (tenant_id, key, value_json) VALUES (?,?,?) ON CONFLICT(tenant_id, key) DO UPDATE SET value_json = excluded.value_json').run('gb', k, JSON.stringify(v));
+  set('leave_approver', SYN.ops);
+  const p = leave.previewRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2026-12-07', end: '2026-12-07', coverUserId: SYN.senior });
+  assert.equal(p.approverId, SYN.ops);
+  // the approver's own request goes to their manager, never to themselves
+  const own = leave.previewRequest(db, as(SYN.ops), { typeCode: 'AV', start: '2026-12-07', end: '2026-12-07', coverUserId: SYN.senior });
+  assert.ok(own.approverId && own.approverId !== SYN.ops);
+  // cutover set and no opening balances yet → requests closed
+  set('leave_cutover', '2026-12-31');
+  assert.equal(leave.leaveStatus(db, 'gb').live, !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = 'gb' AND kind = 'opening'").get());
+  db.prepare("DELETE FROM leave_ledger WHERE tenant_id = 'gb' AND kind = 'opening'").run();
+  const closed = leave.previewRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2027-01-10', end: '2027-01-10', coverUserId: SYN.senior });
+  assert.ok(closed.blocking.some((b) => /LeaveBoard cutover on 2026-12-31/.test(b)));
+}));

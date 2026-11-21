@@ -8,6 +8,7 @@ import * as leave from '../domain/leave.js';
 import * as proj from '../domain/projects.js';
 import * as ai from '../domain/ai.js';
 import * as ntf from '../domain/notifications.js';
+import * as prof from '../domain/profiles.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances, reconcile, compareSnapshots } from '../imports/leaveboard.js';
 import { previewPlans, applyPlans, previewHistory, applyHistory } from '../imports/pms.js';
 import { previewGbForms, applyGbForms } from '../imports/gbform.js';
@@ -27,11 +28,18 @@ export function buildApi(db) {
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title,
-      nav: { inbox: reviews > 0 || approvals > 0 || leads > 0 || has(actor, 'partner'), calibration: has(actor, 'partner'), admin: isOps(actor) } };
+      nav: { inbox: reviews > 0 || approvals > 0 || leads > 0 || has(actor, 'partner'), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') } };
   });
 
   // directory (names only) for pickers such as "who covers your work"
   r.get('/api/people', ({ actor }) => db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1 AND id != ? ORDER BY name').all(actor.tenantId, actor.id));
+
+  // --------------------------------------------------------- HR profiles --
+  // the person, People Ops/admin and partners only (enforced in the domain)
+  r.get('/api/profile', ({ actor }) => prof.getProfile(db, actor, actor.id));
+  r.get('/api/profiles', ({ actor }) => prof.listProfiles(db, actor));
+  r.get('/api/profiles/:id', ({ actor, params }) => prof.getProfile(db, actor, params.id));
+  r.patch('/api/profiles/:id', ({ actor, params, body }) => prof.updateProfile(db, actor, params.id, body || {}, { source: 'Edited in GB Prism' }));
 
   // ----------------------------------------------------------------- home --
   r.get('/api/home', ({ actor }) => {
@@ -121,6 +129,7 @@ export function buildApi(db) {
   r.post('/api/plans/:id/category-reviewers', ({ actor, params, body }) => ({ ok: perf.setCategoryReviewer(db, actor, params.id, body) }));
   r.post('/api/plans/:id/input-invites', ({ actor, params, body }) => ({ ok: perf.inviteInput(db, actor, params.id, body) }));
   r.post('/api/plans/:id/inputs', ({ actor, params, body }) => ({ id: perf.addInput(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/reviewer-note', ({ actor, params, body }) => perf.decideReviewerNote(db, actor, params.id, body || {}));
   r.post('/api/plans/:id/actions', ({ actor, params, body }) => ({ id: perf.addDevelopmentAction(db, actor, params.id, body) }));
   r.patch('/api/actions/:id', ({ actor, params, body }) => perf.updateDevelopmentAction(db, actor, params.id, body));
   r.post('/api/plans/:id/check-ins', ({ actor, params, body }) => ({ id: perf.addCheckIn(db, actor, params.id, body) }));
@@ -143,6 +152,7 @@ export function buildApi(db) {
   });
 
   // ---------------------------------------------------------------- leave --
+  r.get('/api/leave/status', ({ actor }) => leave.leaveStatus(db, actor.tenantId));
   r.get('/api/leave/types', ({ actor }) => db.prepare('SELECT code, name, category, allow_partial, requires_cover, reason_required, tracks_balance FROM leave_types WHERE tenant_id = ? AND active = 1').all(actor.tenantId));
   r.get('/api/leave/balances', ({ actor, ctx }) => leave.balancesForUser(db, actor, q(ctx, 'userId') || actor.id, Number(q(ctx, 'year') || todayIn().slice(0, 4)))
     .map((b) => ({ ...b, posted: fmtX100(b.posted_x100), pending: fmtX100(b.pending_x100), projected: fmtX100(b.projected_x100) })));

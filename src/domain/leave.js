@@ -94,6 +94,17 @@ export { ledger as postLedger };
 // ------------------------------------------------------------- requests ----
 export function previewRequest(db, actor, input) { return evaluate(db, actor, input, { dryRun: true }); }
 
+const settingOf = (db, tenantId, key) => { const r = db.prepare('SELECT value_json FROM settings WHERE tenant_id = ? AND key = ?').get(tenantId, key); return r ? P(r.value_json, null) : null; };
+
+/** LeaveBoard → Prism switch-over: requests open only once opening balances are posted at the cutover date. */
+export function leaveStatus(db, tenantId) {
+  const cutover = settingOf(db, tenantId, 'leave_cutover');
+  const live = !cutover || !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' LIMIT 1").get(tenantId);
+  const approverId = settingOf(db, tenantId, 'leave_approver');
+  const approver = approverId ? db.prepare('SELECT name FROM users WHERE id = ?').get(approverId)?.name ?? null : null;
+  return { cutover, live, approver };
+}
+
 function evaluate(db, actor, { userId = actor.id, typeCode, start, end, startPortion = 'full', endPortion = 'full', coverUserId, exceptionReason }) {
   const type = db.prepare('SELECT * FROM leave_types WHERE tenant_id = ? AND code = ? AND active = 1').get(actor.tenantId, typeCode);
   if (!type) throw bad('Unknown request type');
@@ -143,7 +154,16 @@ function evaluate(db, actor, { userId = actor.id, typeCode, start, end, startPor
   if (type.requires_cover && !coverUserId) blocking.push('Name a colleague covering your work');
   if (s.projectCoverageCheck) warnings.push(...coverageWarnings(db, actor.tenantId, userId, start, end));
 
+  const st = leaveStatus(db, actor.tenantId);
+  if (!st.live) blocking.push(`Time off moves to Prism after the LeaveBoard cutover on ${st.cutover}. Until then, keep using LeaveBoard.`);
+  // one approver for everyone (GB decision); their own requests go to their manager / backup
+  const central = settingOf(db, actor.tenantId, 'leave_approver');
   let approverId = emp.manager_id; let backupId = emp.backup_approver_id;
+  if (central && central !== userId) {
+    // backup when the approver is away: the person's own manager/backup, else the approver's manager
+    backupId = [emp.manager_id, emp.backup_approver_id, currentEmployment(db, central)?.manager_id].find((x) => x && x !== central && x !== userId) ?? null;
+    approverId = central;
+  }
   if (approverId === userId) { approverId = backupId; backupId = null; }
   if (!approverId || approverId === userId) blocking.push('No approver configured — ask People Ops');
   return { type, emp, policy: { version: pol.version, status: pol.status }, calc, blocking, warnings, projected, approverId, backupId };

@@ -96,3 +96,25 @@ This pulls the latest code from GitHub and restarts the app. Data, settings and 
 | Secrets and settings | `/etc/gb-prism/env` (readable only by root and the app) |
 | GB private config | `/opt/gb-prism/config/private` |
 | Logs | `sudo journalctl -u gb-prism -n 100` |
+
+## Loading GB's real data (one command)
+
+All real data lives in a private folder that is never committed: roster, decisions, 2026 forms, the 2025 PMS tab, LeaveBoard exports, the reviewer workbook and `hr-evidence.json` (facts checked against email). Upload the private bundle `gb-real-data.zip` to the server, then:
+
+```bash
+sudo mkdir -p /opt/gb-prism/config/private/real && sudo unzip -o ~/gb-real-data.zip -d /opt/gb-prism/config/private/real && sudo chown -R gbprism /opt/gb-prism/config/private && rm ~/gb-real-data.zip
+```
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-all.js --dir config/private/real --db /var/lib/gb-prism/prism-people.db --dry-run
+```
+
+Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-dd` only once GB has set the LeaveBoard cutover date; this posts opening balances. Re-running is safe. Restart afterwards with `sudo systemctl restart gb-prism`.
+
+## Leave approver and LeaveBoard cutover (GB decisions)
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.js --db /var/lib/gb-prism/prism-people.db --approver layan@gb-advisory.com --cutover 2026-11-24
+```
+
+Until opening balances are posted, Time off tells people to keep using LeaveBoard. At close of business on the cutover day, export a fresh LeaveBoard **Annual situation** report (and the **Leaves** report for bookings after the cutover). Upload them in Admin → Imports, apply, then **Post opening balances** with the cutover date. That opens time off in Prism.

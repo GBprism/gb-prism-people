@@ -5,6 +5,7 @@ import { pageHeader, emptyState, skeletonLines, button as uiButton } from '/ui.j
 import { importsScreen } from '/screens/imports.js';
 import { homeScreen } from '/screens/home.js';
 import { signInScreen } from '/screens/signin.js';
+import { myProfileScreen, peopleScreen } from '/screens/people.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -42,6 +43,7 @@ let ME = null;
 const routes = [
   [/^#\/?$/, home], [/^#\/inbox$/, inbox], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, timeoff], [/^#\/request\/(.+)$/, requestPage],
   [/^#\/history$/, history], [/^#\/projects$/, projects], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
+  [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {
@@ -134,6 +136,15 @@ async function review(id) {
   if (editSelf && v.cycle.self_due) root.append(h('p', {}, `Please complete by ${fmtDate(v.cycle.self_due)} (Amman time). Changes save automatically.`));
 
   if (v.category_reviewers?.length) root.append(h('p', { class: 'small' }, 'Section reviewers: ', v.category_reviewers.map((r) => `${CAT[r.category]} — ${r.name}`).join(' · '), ` · Lead reviewer: ${v.reviewer?.name || '—'}`));
+  if (v.reviewer_note) {
+    const n = v.reviewer_note; const tone = n.status === 'confirmed' ? 'ok' : n.status === 'change_requested' ? 'danger' : 'warn';
+    const label = { confirmed: 'Reviewers confirmed', change_requested: 'Change of reviewer requested', draft: 'Reviewers in draft — partner to confirm' }[n.status];
+    root.append(h('div', { class: 'card reviewer-note' }, h('p', {}, h('span', { class: `pill ${tone}` }, label), n.confirmed_by ? h('span', { class: 'small muted' }, ` by ${n.confirmed_by}`) : null),
+      n.rationale ? h('p', { class: 'small' }, 'Why these reviewers: ', n.rationale) : null,
+      n.can_decide && n.status !== 'confirmed' ? h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'confirm' } }), 'Reviewers confirmed').then(render) }, 'Confirm reviewers'),
+        h('button', { class: 'btn', onclick: () => { const note = prompt('What should change?'); if (note) act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'change', note } }), 'Change requested').then(render); } }, 'Ask for a change')) : null));
+  }
   // weights summary
   root.append(h('p', { class: 'small' }, 'Weights: ', Object.entries(v.category_weights).filter(([, w]) => w).map(([c, w]) => `${CAT[c]} ${w}%`).join(' · ')));
 
@@ -293,7 +304,9 @@ function leadFeedback(v) {
 
 // ------------------------------------------------------------ time off --
 async function timeoff() {
-  const [types, mine, people] = await Promise.all([api('/api/leave/types'), api('/api/leave/requests'), api('/api/people')]);
+  const [types, mine, people, status] = await Promise.all([api('/api/leave/types'), api('/api/leave/requests'), api('/api/people'), api('/api/leave/status').catch(() => ({ live: true }))]);
+  const cutoverNote = status.live ? null : h('div', { class: 'alert warn', role: 'status' }, h('strong', {}, 'Keep using LeaveBoard for now. '),
+    `Time off moves to Prism after the LeaveBoard cutover on ${fmtDate(status.cutover)}; your balances will carry over then.`);
   const f = { typeCode: types[0]?.code, start: '', end: '', startPortion: 'full', endPortion: 'full', coverUserId: '', reason: '', handover: '', exceptionReason: '' };
   const preview = h('div', { 'aria-live': 'polite' });
   const key = crypto.randomUUID();
@@ -327,7 +340,7 @@ async function timeoff() {
   refresh();
   const today = new Date().toISOString().slice(0, 10); const in60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const cal = await api(`/api/leave/calendar?from=${today}&to=${in60}`);
-  return h('div', {}, h('h1', {}, 'Time off and off-site work'), form,
+  return h('div', {}, h('h1', {}, 'Time off and off-site work'), cutoverNote, form,
     h('section', { class: 'card' }, h('h2', {}, 'My requests'), mine.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Type', 'Dates', 'Days', 'Status', ''].map((x) => h('th', {}, x)))),
       h('tbody', {}, mine.map((r) => h('tr', {}, h('td', {}, r.type.name), h('td', {}, `${fmtDate(r.start_date)}${r.end_date !== r.start_date ? ' → ' + fmtDate(r.end_date) : ''}`), h('td', {}, r.chargeable), h('td', {}, h('span', { class: `pill ${stateTone(r.state)}` }, r.state)),
         h('td', {}, ['submitted', 'approved'].includes(r.state) ? h('button', { class: 'btn small', onclick: () => act(() => api(`/api/leave/requests/${r.id}/cancel`, { method: 'POST', body: {} }), r.state === 'submitted' ? 'Withdrawn' : 'Cancelled').then(render) }, r.state === 'submitted' ? 'Withdraw' : 'Cancel') : null)))))) : h('p', { class: 'muted' }, 'No requests yet.')),

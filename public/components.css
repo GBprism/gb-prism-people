@@ -338,3 +338,25 @@ button.nav-item { inline-size: 100%; border: 0; background: transparent; font: i
 .dev-user:focus-visible { outline: 2px solid var(--color-focus); }
 .dev-user > span:last-child { display: grid; font-size: var(--text-sm); }
 @media (max-width: 860px) { .signin { grid-template-columns: 1fr; } .signin-brand { gap: var(--space-4); padding: var(--space-6) var(--page-pad); } .signin-pitch h1 { font-size: var(--text-2xl); } .signin-pitch p, .signin-points { display: none; } }
+
+/* ---- HR profile (My profile, People drawer) ---- */
+.profile, .stack { display: grid; gap: var(--space-4); align-content: start; }
+.row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.profile-grid { display: grid; gap: var(--section-gap); grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); align-items: start; }
+.drawer .profile-grid { grid-template-columns: minmax(0, 1fr); }
+.kv { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.kv dt { color: var(--color-text-3); font-size: var(--text-sm); }
+.kv dd { margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.kv-head { font-size: var(--text-sm); font-weight: 600; margin-block-end: var(--space-2); }
+.bullets { margin: 0; padding-inline-start: var(--space-5); display: grid; gap: var(--space-1); }
+.asg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.asg-list > li { display: grid; gap: var(--space-1); padding-block-end: var(--space-3); border-block-end: 1px solid var(--color-border); }
+.asg-list > li:last-child { border-block-end: 0; padding-block-end: 0; }
+.asg-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; font-size: var(--text-sm); }
+.profile-note { font-size: var(--text-sm); color: var(--color-text-3); display: flex; gap: var(--space-1); align-items: center; flex-wrap: wrap; }
+.cell-sub { font-size: var(--text-sm); }
+.reviewer-note { display: grid; gap: var(--space-2); }
+.nowrap { white-space: nowrap; }
+/* long free-text statuses (HR profile) wrap instead of widening the table or card */
+.kv .badge, table.data td .badge { white-space: normal; max-inline-size: 100%; text-align: start; }
+table.data td .badge { max-inline-size: 26ch; }

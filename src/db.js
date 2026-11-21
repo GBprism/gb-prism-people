@@ -250,6 +250,20 @@ export const MIGRATIONS = [
    CREATE TABLE plan_inputs (
      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, plan_id TEXT NOT NULL REFERENCES plans(id), author_id TEXT NOT NULL,
      label TEXT NOT NULL, body TEXT NOT NULL, evidence_url TEXT, created_at TEXT NOT NULL);`,
+
+  // ---- 010 HR profiles (restricted: the person, People Ops/admin and partners) --
+  `CREATE TABLE employee_profiles (
+     user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL,
+     level TEXT, date_of_birth TEXT, age_recorded INTEGER, age_recorded_on TEXT,
+     probation_status TEXT, contract_status TEXT,
+     social_security_status TEXT, medical_insurance_status TEXT, gym_stipend_status TEXT,
+     projects_summary TEXT, proposals_summary TEXT, gaps TEXT,
+     source TEXT, updated_by TEXT, updated_at TEXT NOT NULL);
+   -- why these reviewers were chosen (from the reviewer matrix) and whether partners confirmed it
+   CREATE TABLE plan_reviewer_notes (
+     plan_id TEXT PRIMARY KEY REFERENCES plans(id), tenant_id TEXT NOT NULL,
+     rationale TEXT, status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','confirmed','change_requested')),
+     source TEXT, confirmed_by TEXT, confirmed_at TEXT, updated_at TEXT NOT NULL);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {
