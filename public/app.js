@@ -10,6 +10,7 @@ import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
 import { inboxScreen } from '/screens/inbox.js';
 import { projectsScreen } from '/screens/projects.js';
 import { historyScreen } from '/screens/history.js';
+import { reviewScreen } from '/screens/review.js';
 
 // ------------------------------------------------------------- helpers --
 const $ = (s, el = document) => el.querySelector(s);
@@ -45,7 +46,7 @@ const stateTone = (s) => (['closed', 'acknowledged', 'released', 'approved'].inc
 // --------------------------------------------------------------- shell --
 let ME = null;
 const routes = [
-  [/^#\/?$/, home], [/^#\/inbox$/, () => inboxScreen({ api })], [/^#\/review\/(.+)$/, review], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
+  [/^#\/?$/, home], [/^#\/inbox$/, () => inboxScreen({ api })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, myAi],
   [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
@@ -87,206 +88,6 @@ async function login() { document.body.replaceChildren(await signInScreen({ api 
 
 // ---------------------------------------------------------------- home --
 function home() { return homeScreen({ api, me: ME }); }
-
-// -------------------------------------------------------------- review --
-async function review(id) {
-  const v = await api(`/api/plans/${id}`);
-  const a = v.access;
-  if (a.relation === 'project_lead') return leadFeedback(v);
-  if (a.relation === 'input') return inputPage(v);
-  const root = h('div', {});
-  const saveState = h('span', { class: 'savestate', 'aria-live': 'polite' });
-  const editSelf = a.relation === 'self' && ['approved_plan', 'self_assessment'].includes(v.state);
-  const editMgr = a.editManager; const calib = a.calibrate; const draft = v.state === 'draft_plan' && ['self', 'reviewer'].includes(a.relation);
-
-  // autosave queue for self / manager edits
-  let pending = {}; let timer = null; let sumPending = null;
-  const schedule = () => { saveState.textContent = 'Unsaved changes…'; clearTimeout(timer); timer = setTimeout(flush, 1200); };
-  async function flush() {
-    const items = Object.values(pending); const summary = sumPending; pending = {}; sumPending = null;
-    if (!items.length && !summary) return;
-    saveState.textContent = 'Saving…';
-    try { await api(`/api/plans/${id}/${editSelf ? 'self' : 'manager'}`, { method: 'POST', body: { items, summary } }); saveState.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; }
-    catch (e) { saveState.textContent = 'Not saved'; $('#banner').replaceChildren(errorBox(e)); }
-  }
-  const setItem = (itemId, patch) => { pending[itemId] = { ...(pending[itemId] || { id: itemId }), ...patch }; schedule(); };
-  const setSummary = (k, val) => { sumPending = { ...(sumPending || {}), [k]: val }; schedule(); };
-  window.onbeforeunload = () => (Object.keys(pending).length ? true : undefined);
-
-  root.append(h('div', { class: 'row spread' },
-    h('div', {}, h('h1', {}, `${v.employee.name} — ${v.cycle.name}`), h('p', { class: 'muted small' },
-      [v.role_title, `Reviewer: ${v.reviewer?.name || 'unassigned'}`, v.partner ? `Partner: ${v.partner.name}` : null, v.rubric_version ? `Template ${v.rubric_version}` : null, v.approved_revision ? `Approved plan rev. ${v.approved_revision}` : null].filter(Boolean).join(' · '))),
-    h('div', {}, h('span', { class: `pill ${stateTone(v.state)}` }, v.stateLabel), ' ', saveState)));
-  if (v.basis_status !== 'verified') root.append(h('div', { class: 'alert warn' }, v.basis_status === 'gb_decision' ? `Assessment basis: GB decision — ${v.basis_note}` : 'The approved plan for this review has not been verified yet. Raise it with your manager before scoring.'));
-  if (v.scoring_status !== 'approved' && v.scoring_status !== 'historical') root.append(h('p', { class: 'small muted' }, 'Rating scale and thresholds are candidates awaiting GB approval.'));
-  if (editSelf && v.cycle.self_due) root.append(h('p', {}, `Please complete by ${fmtDate(v.cycle.self_due)} (Amman time). Changes save automatically.`));
-
-  if (v.category_reviewers?.length) root.append(h('p', { class: 'small' }, 'Section reviewers: ', v.category_reviewers.map((r) => `${CAT[r.category]} — ${r.name}`).join(' · '), ` · Lead reviewer: ${v.reviewer?.name || '—'}`));
-  if (v.reviewer_note) {
-    const n = v.reviewer_note; const tone = n.status === 'confirmed' ? 'ok' : n.status === 'change_requested' ? 'danger' : 'warn';
-    const label = { confirmed: 'Reviewers confirmed', change_requested: 'Change of reviewer requested', draft: 'Reviewers in draft — partner to confirm' }[n.status];
-    root.append(h('div', { class: 'card reviewer-note' }, h('p', {}, h('span', { class: `pill ${tone}` }, label), n.confirmed_by ? h('span', { class: 'small muted' }, ` by ${n.confirmed_by}`) : null),
-      n.rationale ? h('p', { class: 'small' }, 'Why these reviewers: ', n.rationale) : null,
-      n.can_decide && n.status !== 'confirmed' ? h('div', { class: 'row' },
-        h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'confirm' } }), 'Reviewers confirmed').then(render) }, 'Confirm reviewers'),
-        h('button', { class: 'btn', onclick: () => { const note = prompt('What should change?'); if (note) act(() => api(`/api/plans/${id}/reviewer-note`, { method: 'POST', body: { decision: 'change', note } }), 'Change requested').then(render); } }, 'Ask for a change')) : null));
-  }
-  // weights summary
-  root.append(h('p', { class: 'small' }, 'Weights: ', Object.entries(v.category_weights).filter(([, w]) => w).map(([c, w]) => `${CAT[c]} ${w}%`).join(' · ')));
-
-  if (draft) root.append(draftEditor(v));
-  for (const cat of ['objective', 'competency', 'initiative']) {
-    const its = v.items.filter((i) => i.category === cat);
-    if (!its.length) continue;
-    root.append(h('h2', {}, `${CAT[cat]}${v.category_weights[cat] ? ` · ${v.category_weights[cat]}%` : ''}`));
-    for (const it of its) root.append(itemCard(v, it, { editSelf, editMgr: editMgr && (!a.editCategories || a.editCategories.includes(it.category)), calib, setItem, id }));
-  }
-
-  // projects & evidence
-  if (v.projects?.length) root.append(h('section', { class: 'card' }, h('h2', {}, 'Confirmed projects this cycle'),
-    h('ul', {}, v.projects.map((p) => h('li', {}, `${p.name} (${p.kind}) — ${p.role}`, a.relation === 'reviewer' && !['released', 'acknowledged', 'closed'].includes(v.state) ? h('button', { class: 'btn small ml', onclick: () => act(() => api(`/api/plans/${id}/feedback-invite`, { method: 'POST', body: { assignmentId: p.assignment_id } }), 'Project lead invited') }, 'Ask lead for feedback') : null))),
-    editSelf ? h('div', {}, h('label', { for: 'projconf' }, 'Confirm your projects and what you personally owned or contributed'), h('textarea', { id: 'projconf', oninput: (e) => setSummary('projects', e.target.value) }, v.summary.self?.projects || '')) : null));
-  if (v.project_feedback?.length) root.append(h('section', { class: 'card' }, h('h2', {}, 'Project lead feedback'), v.project_feedback.map((f) => h('div', { class: 'side' }, h('strong', {}, `${f.author} on ${f.project}`), h('p', {}, f.body), f.evidence_url ? h('a', { href: f.evidence_url, rel: 'noopener', target: '_blank' }, 'Evidence') : null))));
-  if (v.inputs || v.input_invites) {
-    const people = a.relation === 'reviewer' && !['released', 'acknowledged', 'closed'].includes(v.state) ? await api('/api/people') : [];
-    const who = h('select', { 'aria-label': 'Invite' }, h('option', { value: '' }, '— invite someone for input —'), people.filter((p) => p.id !== v.employee.id).map((p) => h('option', { value: p.id }, p.name)));
-    root.append(h('section', { class: 'card' }, h('h2', {}, 'Input from project seniors'),
-      v.input_invites?.length ? h('p', { class: 'small' }, v.input_invites.map((i) => `${i.name} (${i.label}) ${i.given ? '✓' : '— waiting'}`).join(' · ')) : null,
-      (v.inputs || []).map((i) => h('div', { class: 'side' }, h('strong', {}, `${i.author} — ${i.label}`), h('p', {}, i.body), i.evidence_url ? h('a', { href: i.evidence_url, target: '_blank', rel: 'noopener' }, 'Evidence') : null)),
-      people.length ? h('div', { class: 'row mt' }, who, h('button', { class: 'btn', onclick: () => act(() => api(`/api/plans/${id}/input-invites`, { method: 'POST', body: { inviteeId: who.value, label: 'Project feedback' } }), 'Invitation added').then(render) }, 'Invite')) : null));
-  }
-  if (v.discrepancies?.length) root.append(h('div', { class: 'alert warn' }, h('strong', {}, 'Self vs manager differences of 1 point or more: '), v.discrepancies.map((d) => `${d.title} (${d.self} vs ${d.manager})`).join('; '), '. Check evidence with project leads before finalising.'));
-
-  // self summary
-  if (a.viewSelf) {
-    const s = v.summary.self || {};
-    const f = (k, label) => h('div', {}, h('label', { for: `s_${k}` }, label), editSelf ? h('textarea', { id: `s_${k}`, oninput: (e) => setSummary(k, e.target.value) }, s[k] || '') : h('p', {}, s[k] || '—'));
-    root.append(h('section', { class: 'card' }, h('h2', {}, a.relation === 'self' ? 'Your summary' : 'Employee summary'), f('strongest_outcomes', 'Strongest outcomes'), f('improvements', 'What you would approach differently'), f('proposed_goals', 'Proposed goals for next year'), f('development_priorities', 'Development priorities and support needed'),
-      editSelf ? h('p', { class: 'small muted' }, 'Optional: add an AI-assisted example under ', h('a', { href: '#/ai' }, 'AI examples'), ' and link it to an objective. Usage figures never affect ratings.') : null));
-  }
-  if (a.viewManager && a.relation !== 'self') {
-    const s = v.summary.manager || {};
-    const leadEdit = editMgr && a.relation === 'reviewer';
-    const f = (k, label, list) => h('div', {}, h('label', { for: `m_${k}` }, label), leadEdit ? h('textarea', { id: `m_${k}`, oninput: (e) => setSummary(k, list ? e.target.value.split('\n').filter(Boolean) : e.target.value) }, list ? (s[k] || []).join('\n') : s[k] || '') : h('p', {}, (list ? (s[k] || []).join('; ') : s[k]) || '—'));
-    root.append(h('section', { class: 'card' }, h('h2', {}, 'Manager summary'), f('strengths', 'One or two supported strengths (one per line)', true), f('gaps', 'One or two gaps or open questions (one per line)', true), f('next_action', 'Measurable next action'), f('evidence_checked_with', 'Evidence checked with (project leads)')));
-  }
-
-  // scores
-  const scoreBlock = (label, s) => s && h('div', { class: 'side' }, h('strong', {}, label), ' ', s.status === 'scored' ? h('span', {}, `${s.rounded} — ${s.rating}`) : h('span', { class: 'muted' }, s.status === 'incomplete' ? `${s.missing.length} item(s) still to complete` : 'Weights or N/A need attention'),
-    h('details', {}, h('summary', {}, 'Show the math'), h('div', { class: 'math' }, s.math.join('\n')), s.redistributions.length ? h('p', { class: 'small' }, s.redistributions.map((r) => r.message).join('; ')) : null, s.errors.length ? h('ul', { class: 'small' }, s.errors.map((e) => h('li', {}, e.message))) : null));
-  root.append(h('section', { class: 'card' }, h('h2', {}, 'Scores'), h('p', { class: 'small muted' }, 'Self, manager and final ratings are kept separate. Precision and thresholds apply only to the final score.'),
-    h('div', { class: 'cols' }, scoreBlock('Self', v.scores.self), scoreBlock('Manager', v.scores.manager), scoreBlock('Calibrated (final)', v.scores.final))));
-  if (v.outcome) root.append(h('section', { class: 'card hero' }, h('h2', {}, 'Released result'), h('p', {}, h('strong', {}, `${v.outcome.final_score ?? '—'} ${v.outcome.final_rating ? '— ' + v.outcome.final_rating : ''}`), ` · released ${fmtDate(v.outcome.released_at)}`),
-    v.outcome.math ? h('details', {}, h('summary', {}, 'How this was calculated'), h('div', { class: 'math' }, v.outcome.math.join('\n'))) : null,
-    v.outcome.acknowledged_at ? h('p', { class: 'small' }, `Acknowledged ${fmtDate(v.outcome.acknowledged_at)}${v.outcome.ack_comment ? ' — "' + v.outcome.ack_comment + '"' : ''}`) : null));
-
-  // development actions
-  if (v.development_actions.length || (a.relation === 'reviewer' && ['released', 'acknowledged', 'manager_review', 'partner_calibration'].includes(v.state))) {
-    const t = h('input', { id: 'da_t', placeholder: 'e.g. Lead one client presentation' }); const due = h('input', { id: 'da_d', type: 'date' }); const kind = h('select', { id: 'da_k' }, ['improvement', 'strength', 'development'].map((k) => h('option', { value: k }, k)));
-    root.append(h('section', { class: 'card' }, h('h2', {}, 'Development actions'),
-      h('ul', {}, v.development_actions.map((d) => h('li', {}, `${d.title} (${d.kind}) · due ${fmtDate(d.due_date)} · `, h('span', { class: 'pill' }, d.status),
-        ['self', 'reviewer'].includes(a.relation) && d.status !== 'done' ? h('button', { class: 'btn small ml', onclick: () => act(() => api(`/api/actions/${d.id}`, { method: 'PATCH', body: { status: 'done' } }), 'Marked done').then(render) }, 'Mark done') : null))),
-      a.relation === 'reviewer' ? h('div', { class: 'cols' }, h('div', {}, h('label', { for: 'da_t' }, 'Action'), t), h('div', {}, h('label', { for: 'da_k' }, 'Type'), kind), h('div', {}, h('label', { for: 'da_d' }, 'Due date'), due),
-        h('div', {}, h('label', {}, ' '), h('button', { class: 'btn', onclick: () => act(() => api(`/api/plans/${id}/actions`, { method: 'POST', body: { title: t.value, kind: kind.value, dueDate: due.value, ownerId: v.employee.id } }), 'Action added').then(render) }, 'Add action'))) : null));
-  }
-
-  // actions bar
-  const bar = h('div', { class: 'row card' });
-  const reasonPrompt = (msg) => { const r = prompt(msg); if (!r) throw new Error('A reason is required'); return r; };
-  const go = (label, fn, cls = '') => bar.append(h('button', { class: `btn ${cls}`, onclick: async () => { await flush(); await act(fn, `${label}: done`); render(); } }, label));
-  if (editSelf) go('Submit self-assessment', () => api(`/api/plans/${id}/self/submit`, { method: 'POST' }), 'primary');
-  if (a.relation === 'self' && ['approved_plan', 'self_assessment'].includes(v.state)) go('Ask for clarification', () => api(`/api/plans/${id}/clarifications`, { method: 'POST', body: { question: reasonPrompt('What needs clarifying (e.g. a target or project attribution)?') } }));
-  if (editMgr && a.relation === 'category_reviewer') bar.append(h('span', { class: 'small muted' }, `Your ratings save automatically. ${v.reviewer?.name || 'The lead reviewer'} submits the review once every section is rated.`));
-  if (editMgr && a.relation === 'reviewer') { go('Submit to partner calibration', () => api(`/api/plans/${id}/manager/submit`, { method: 'POST' }), 'primary'); go('Return to employee', () => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: reasonPrompt('Why are you returning it?') } })); }
-  if (calib) { go('Release result', () => api(`/api/plans/${id}/release`, { method: 'POST', body: { note: 'Calibrated' } }), 'primary'); go('Return to manager', () => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: reasonPrompt('Why are you returning it?') } })); }
-  if (a.relation === 'self' && v.state === 'released') go('Acknowledge receipt', () => api(`/api/plans/${id}/acknowledge`, { method: 'POST', body: { comment: prompt('Optional comment (acknowledging receipt is not agreement):') || null } }), 'primary');
-  if (a.relation === 'reviewer' && v.state === 'acknowledged') go('Close review', () => api(`/api/plans/${id}/close`, { method: 'POST' }), 'primary');
-  if (draft && a.relation === 'reviewer') go('Approve plan', () => api(`/api/plans/${id}/approve`, { method: 'POST', body: { note: 'Approved in Prism' } }), 'primary');
-  if ((a.relation === 'partner' || a.relation === 'granted') && ['released', 'acknowledged', 'closed'].includes(v.state)) go('Reopen…', () => api(`/api/plans/${id}/reopen`, { method: 'POST', body: { reason: reasonPrompt('Reason for reopening (audited):') } }), 'danger');
-  if (['reviewer', 'partner'].includes(a.relation)) bar.append(h('a', { class: 'btn', href: `/api/plans/${id}/export` }, 'Export CSV'));
-  if (['self', 'reviewer'].includes(a.relation) && ['approved_plan', 'self_assessment', 'closed', 'acknowledged'].includes(v.state)) go('Log check-in', () => api(`/api/plans/${id}/check-ins`, { method: 'POST', body: { kind: 'quarterly', heldOn: new Date().toISOString().slice(0, 10), note: prompt('Check-in notes:') || '' } }));
-  if (bar.children.length) root.append(bar);
-
-  root.append(h('details', { class: 'card' }, h('summary', {}, 'History'), h('ul', { class: 'small' }, v.transitions.map((t) => h('li', {}, `${fmtDate(t.at)}: ${t.from_state || '—'} → ${t.to_state}${t.reason ? ' — ' + t.reason : ''}`))),
-    v.revisions.length ? h('p', { class: 'small' }, 'Plan revisions: ', v.revisions.map((r) => `rev ${r.revision} (${r.kind}, ${fmtDate(r.approved_at)})`).join(', ')) : null));
-  return root;
-}
-
-function itemCard(v, it, { editSelf, editMgr, calib, setItem, id }) {
-  const scale = v.scale; const values = []; for (let x = scale.min; x <= scale.max + 1e-9; x += scale.step || 1) values.push(Math.round(x * 10) / 10);
-  const radios = (name, cur, onchange, disabled) => h('div', { class: 'rating', role: 'radiogroup', 'aria-label': name }, values.map((x) => h('label', { title: scale.anchors?.[x] || '' }, h('input', { type: 'radio', name: `${name}_${it.id}`, value: x, checked: cur === x, disabled, onchange: () => onchange(x) }), String(x))));
-  const anchors = it.anchors || scale.anchors;
-  const card = h('article', { class: 'item' },
-    h('header', {}, h('div', {}, h('strong', {}, it.title), it.carried_from_item_id ? h('span', { class: 'pill ml' }, 'carried forward') : null),
-      h('span', { class: 'small muted' }, [it.weight != null ? `Weight ${it.weight}%` : 'Weight to agree', it.target ? `Target: ${it.target}` : null, it.kpi ? `KPI: ${it.kpi}` : null, it.expected_proficiency ? `Expected proficiency ${it.expected_proficiency}` : null].filter(Boolean).join(' · '))),
-    it.description ? h('p', { class: 'small' }, it.description) : null,
-    anchors ? h('details', { class: 'small' }, h('summary', {}, 'Rating anchors'), h('ul', {}, Object.entries(anchors).map(([k, t]) => h('li', {}, `${k}: ${t}`)))) : null,
-    it.source_rating_raw ? h('p', { class: 'small' }, `Historical rating (source value): ${it.source_rating_raw}`) : null,
-    it.na ? h('div', { class: 'alert warn small' }, `Marked N/A — ${it.na_reason || 'no reason'} ${it.na_approved ? '(approved)' : '(awaiting approval)'}`,
-      !it.na_approved && (editMgr || calib) ? h('button', { class: 'btn small ml', onclick: () => act(() => api(`/api/plans/${id}/items/${it.id}/approve-na`, { method: 'POST' }), 'N/A approved').then(render) }, 'Approve N/A') : null) : null);
-  const cols = h('div', { class: 'cols' });
-  if ('self_rating' in it || editSelf) {
-    const ev = (it.self_evidence || [])[0] || {};
-    cols.append(h('div', { class: 'side' }, h('h3', {}, 'Self-assessment'),
-      editSelf ? [
-        h('label', { for: `act_${it.id}` }, 'Actual result'), h('input', { id: `act_${it.id}`, value: it.actual || '', oninput: (e) => setItem(it.id, { actual: e.target.value }) }),
-        h('label', {}, 'Self-rating'), radios('self', it.self_rating, (x) => setItem(it.id, { self_rating: x })),
-        h('label', { for: `why_${it.id}` }, 'Short rationale'), h('textarea', { id: `why_${it.id}`, oninput: (e) => setItem(it.id, { self_rationale: e.target.value }) }, it.self_rationale || ''),
-        h('label', { for: `ev_${it.id}` }, 'Strongest evidence (Drive link — existing permissions apply)'), h('input', { id: `ev_${it.id}`, type: 'url', value: ev.url || '', placeholder: 'https://drive.google.com/…', oninput: (e) => setItem(it.id, { self_evidence: [{ url: e.target.value }] }) }),
-        h('label', { class: 'small plain' }, h('input', { type: 'checkbox', class: 'inline-check', checked: it.na, onchange: (e) => setItem(it.id, { propose_na: e.target.checked, na_reason: e.target.checked ? prompt('Why is this item not applicable?') : null }) }), ' Propose N/A (needs manager approval)'),
-      ] : [h('p', {}, h('strong', {}, it.self_rating ?? '—'), it.actual ? ` · Actual: ${it.actual}` : ''), h('p', { class: 'small' }, it.self_rationale || ''), ev.url ? h('a', { href: ev.url, target: '_blank', rel: 'noopener' }, 'Evidence') : null]));
-  }
-  if ('manager_rating' in it) {
-    cols.append(h('div', { class: 'side' }, h('h3', {}, 'Manager'),
-      editMgr ? [h('label', {}, 'Manager rating'), radios('mgr', it.manager_rating, (x) => setItem(it.id, { manager_rating: x })),
-        h('label', { for: `mr_${it.id}` }, 'Rationale'), h('textarea', { id: `mr_${it.id}`, oninput: (e) => setItem(it.id, { manager_rationale: e.target.value }) }, it.manager_rationale || '')]
-        : [h('p', {}, h('strong', {}, it.manager_rating ?? '—')), h('p', { class: 'small' }, it.manager_rationale || '')]));
-  }
-  if ('calibrated_rating' in it && (calib || it.calibrated_rating != null)) {
-    const reason = h('input', { id: `cr_${it.id}`, placeholder: 'Reason for any change', value: it.calibration_reason || '' });
-    cols.append(h('div', { class: 'side' }, h('h3', {}, 'Calibration'),
-      calib ? [h('p', { class: 'small' }, `Original (manager): ${it.manager_rating ?? '—'}`), radios('cal', it.calibrated_rating, (x) => act(() => api(`/api/plans/${id}/items/${it.id}/calibrate`, { method: 'POST', body: { calibrated_rating: x, reason: reason.value } }), 'Calibration saved').then(render), false), h('label', { for: `cr_${it.id}` }, 'Reason'), reason]
-        : h('p', {}, h('strong', {}, it.calibrated_rating), it.calibration_reason ? ` — ${it.calibration_reason}` : '')));
-  }
-  if (cols.children.length) card.append(cols);
-  return card;
-}
-
-function draftEditor(v) {
-  const box = h('section', { class: 'card' }, h('h2', {}, 'Plan in draft'), h('p', { class: 'small muted' }, 'Set fresh measures, baselines, targets, dates, weights and support. Category weights must total 100% and item weights within each category must total 100%.'));
-  const cw = { ...v.category_weights };
-  box.append(h('div', { class: 'cols' }, ['objective', 'competency', 'initiative'].map((c) => h('div', {}, h('label', { for: `cw_${c}` }, `${CAT[c]} %`), h('input', { id: `cw_${c}`, type: 'number', min: 0, max: 100, value: cw[c] ?? 0, oninput: (e) => { cw[c] = Number(e.target.value); } })))));
-  const edits = {};
-  const tbl = h('table', {}, h('thead', {}, h('tr', {}, ['Category', 'Item', 'Measure / KPI', 'Target', 'Weight %'].map((x) => h('th', {}, x)))),
-    h('tbody', {}, v.items.map((i) => h('tr', {}, h('td', {}, CAT[i.category]), h('td', {}, h('input', { 'aria-label': 'Item', value: i.title, oninput: (e) => { edits[i.id] = { ...(edits[i.id] || { id: i.id }), title: e.target.value }; } })),
-      h('td', {}, h('input', { 'aria-label': 'KPI', value: i.kpi || '', oninput: (e) => { edits[i.id] = { ...(edits[i.id] || { id: i.id }), kpi: e.target.value }; } })),
-      h('td', {}, h('input', { 'aria-label': 'Target', value: i.target || '', oninput: (e) => { edits[i.id] = { ...(edits[i.id] || { id: i.id }), target: e.target.value }; } })),
-      h('td', {}, h('input', { 'aria-label': 'Weight', type: 'number', value: i.weight ?? '', oninput: (e) => { edits[i.id] = { ...(edits[i.id] || { id: i.id }), weight: Number(e.target.value) }; } }))))));
-  const newCat = h('select', { 'aria-label': 'New item category' }, Object.entries(CAT).map(([k, t]) => h('option', { value: k }, t)));
-  const newTitle = h('input', { 'aria-label': 'New item title', placeholder: 'New goal or competency' });
-  box.append(h('div', { class: 'table-wrap' }, tbl), h('div', { class: 'row' }, newCat, newTitle,
-    h('button', { class: 'btn', onclick: () => act(() => api(`/api/plans/${v.id}/draft`, { method: 'POST', body: { upsertItems: [{ category: newCat.value, title: newTitle.value }] } }), 'Item added').then(render) }, 'Add item'),
-    h('button', { class: 'btn primary', onclick: () => act(() => api(`/api/plans/${v.id}/draft`, { method: 'POST', body: { categoryWeights: cw, upsertItems: Object.values(edits) } }), 'Draft saved').then(render) }, 'Save draft')));
-  return box;
-}
-
-function inputPage(v) {
-  const body = h('textarea', { id: 'inp_body' }); const ev = h('input', { type: 'url', id: 'inp_ev', placeholder: 'Drive link to a deliverable (optional)' });
-  return h('div', {}, h('h1', {}, `${v.label}: ${v.employee.name}`), h('p', { class: 'muted' }, 'You were asked for input on the projects you led with this person. You cannot see their ratings or anyone else\'s input.'),
-    h('section', { class: 'card' }, h('label', { for: 'inp_body' }, 'What did they deliver, how good was it, and what should they work on next?'), body, h('label', { for: 'inp_ev' }, 'Evidence'), ev,
-      h('button', { class: 'btn primary mt', onclick: () => act(() => api(`/api/plans/${v.id}/inputs`, { method: 'POST', body: { body: body.value, evidenceUrl: ev.value || null } }), 'Input sent').then(render) }, 'Send input')),
-    v.myInputs.length ? h('section', { class: 'card' }, h('h2', {}, 'Your input so far'), v.myInputs.map((i) => h('p', {}, i.body))) : null);
-}
-
-function leadFeedback(v) {
-  return h('div', {}, h('h1', {}, `Project feedback for ${v.employee.name}`), h('p', { class: 'muted' }, 'You were invited to give evidence-based feedback on this assignment only. You cannot see the rest of the review.'),
-    v.assignments.map((asg) => {
-      const body = h('textarea', { id: `fb_${asg.id}` }); const ev = h('input', { type: 'url', id: `fbe_${asg.id}`, placeholder: 'Drive link to the deliverable' });
-      return h('section', { class: 'card' }, h('h2', {}, `${asg.project} — ${asg.role}`), h('label', { for: `fb_${asg.id}` }, 'What did they deliver, how good was it, and what should they work on?'), body, h('label', { for: `fbe_${asg.id}` }, 'Evidence'), ev,
-        h('button', { class: 'btn primary mt', onclick: () => act(() => api(`/api/plans/${v.id}/feedback`, { method: 'POST', body: { assignmentId: asg.id, body: body.value, evidenceUrl: ev.value || null } }), 'Feedback sent').then(render) }, 'Send feedback'));
-    }),
-    v.myFeedback.length ? h('section', { class: 'card' }, h('h2', {}, 'Your feedback'), v.myFeedback.map((f) => h('p', {}, f.body))) : null);
-}
 
 // ------------------------------------------------------------ time off --
 // ------------------------------------------------------------------ AI --
