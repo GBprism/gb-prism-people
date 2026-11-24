@@ -307,6 +307,19 @@ export function applyReviewerOverrides(db, actor, file, { year = 2026 } = {}) {
     .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
   const match = nameMatcher(users);
   const out = [];
+  if (file.partner_for_all) {
+    const partner = match(file.partner_for_all);
+    if (!partner) out.push(`Partner ${file.partner_for_all}: not on the roster`);
+    else {
+      const plans = db.prepare(`SELECT p.id, p.user_id FROM plans p JOIN cycles c ON c.id = p.cycle_id WHERE p.tenant_id = ? AND c.year = ? AND c.status != 'historical'
+          AND p.partner_id IS NULL AND p.state NOT IN ('partner_calibration','released','acknowledged','closed')`).all(actor.tenantId, year).filter((p) => p.user_id !== partner.id);
+      for (const p of plans) {
+        db.prepare('UPDATE plans SET partner_id = ? WHERE id = ?').run(partner.id, p.id);
+        audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'plan.partner', entity: 'plan', entityId: p.id, after: { partnerId: partner.id }, reason: 'GB decision: calibrating partner' });
+      }
+      out.push(`Calibrating partner ${partner.name} set on ${plans.length} review(s)`);
+    }
+  }
   for (const r of file.remove_inputs || []) {
     const e = match(r.employee); const i = match(r.invitee);
     if (!e || !i) { out.push(`${r.employee} / ${r.invitee}: not on the roster`); continue; }
