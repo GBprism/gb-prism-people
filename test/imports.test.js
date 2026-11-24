@@ -209,3 +209,39 @@ test('real LeaveBoard General Situation export (acceptance)', { skip: !dir && 's
   assert.equal(r.ledger_entries, 0);
   assert.equal(b.rows.find((x) => x.source_key === 'TOTALS').action, 'skip');
 });
+
+test('LeaveBoard Leaves report (real grouped layout): name rows, ranges, half days, history only, idempotent', async () => {
+  const { xlsx } = await import('./helpers.js');
+  const L = await import('../src/imports/leaveboard.js');
+  const { db, as } = fresh();
+  const ops = as(SYN.ops);
+  db.prepare("INSERT OR IGNORE INTO identity_aliases (id, tenant_id, user_id, source, alias, verified) VALUES ('al_lb_eli', 'gb', ?, 'leaveboard', 'Eli Employee', 1)").run(SYN.emp);
+  const buf = await xlsx({
+    Data: [
+      ['Employee', 'Leave', 'Range', 'Days', 'Status', 'Approver', 'Comment', "Approver's comment", 'Registered on'],
+      ['Eli Employee'],
+      [null, 'Annual Vacation', '04/12/2026 - 04/16/2026', 5, 'Approved', 'Pat Partner', '..', null, 'March 15, 2026 1:52 PM'],
+      [null, 'Sick leave', '03/26/2026', 0.5, 'Approved', 'Pat Partner', 'dentist', null, 'March 25, 2026 7:32 PM'],
+      [null, 'Work From Home', '11/26/2026', 1, 'Approved', 'Pat Partner', null, null, 'November 20, 2026 9:00 AM'],
+      ['Nobody Known'],
+      [null, 'Annual Vacation', '05/03/2026', 1, 'Approved', 'Pat Partner', null, null, 'May 1, 2026 9:00 AM'],
+    ],
+    Details: [['https://leaveboard.com/'], ['generated.on : 2026-11-24T17:51:27.413Z']],
+  });
+  const b = await L.previewLeaveboard(db, ops, { filename: 'Leaves.xlsx', buffer: buf });
+  assert.equal(b.kind, 'leaveboard_leaves');
+  assert.equal(b.summary.named_rows, 4);
+  const byName = Object.groupBy(b.rows, (r) => r.raw.name);
+  assert.deepEqual(byName['Eli Employee'].map((r) => r.action), ['insert', 'insert', 'insert']);
+  assert.equal(byName['Nobody Known'][0].action, 'review');
+  const sick = byName['Eli Employee'][1].raw;
+  assert.deepEqual([sick.start, sick.end, sick.start_portion, sick.duration_x100], ['2026-03-26', '2026-03-26', 'am', 50]);
+  const av = byName['Eli Employee'][0].raw;
+  assert.deepEqual([av.start, av.end], ['2026-04-12', '2026-04-16']);
+  const before = leave.balance(db, 'gb', SYN.emp, 'lt_AV', 2026).posted_x100;
+  const r = L.applyLeaveboard(db, ops, b.id, { cutover: '2026-11-24' });
+  assert.equal(r.requests, 3); assert.equal(r.ledger_entries, 0);
+  assert.equal(leave.balance(db, 'gb', SYN.emp, 'lt_AV', 2026).posted_x100, before); // history only, never deducted again
+  const again = await L.previewLeaveboard(db, ops, { filename: 'Leaves.xlsx', buffer: buf });
+  assert.ok(again.duplicateOf);
+});
