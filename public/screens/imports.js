@@ -98,7 +98,13 @@ export async function importsScreen({ api, toBase64, render }) {
         button('Check file', { variant: 'primary', iconName: 'arrow-right', disabled: !st.source || !multiOk, onClick: async () => {
           msg.replaceChildren();
           if (st.source === 'leaveboard' && st.files.some((f) => /general-situation/i.test(f.name)) && (!st.from || !st.to)) { msg.replaceChildren(banner({ tone: 'warning', title: 'Add the report dates', text: 'Enter the start and end dates you selected in LeaveBoard.' })); return; }
-          try { st.batch = await preview(); go(2); } catch (e) { msg.replaceChildren(banner({ tone: 'danger', title: 'The file could not be checked', text: `${e.message}${e.details?.length ? ' — ' + e.details.map((d) => d.message || d).join('; ') : ''}` })); }
+          try { st.batch = await preview(); go(2); } catch (e) {
+            // the browser could not read the chosen file: it was moved, replaced or is still open elsewhere
+            const unreadable = ['NotFoundError', 'NotReadableError', 'SecurityError'].includes(e.name);
+            msg.replaceChildren(banner({ tone: 'danger', title: unreadable ? 'Your browser could not read the file' : 'The file could not be checked',
+              text: unreadable ? 'It changed or moved after you chose it, or it is still open in Excel. Close it, click “Change files” and choose it again from your Downloads folder.'
+                : `${e.message}${e.details?.length ? ' — ' + e.details.map((d) => d.message || d).join('; ') : ''}` }));
+          }
         } })),
     ];
   }
