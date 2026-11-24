@@ -2,7 +2,7 @@
 // manager | calibration side by side, a sticky bar with save state and the next action.
 // Same endpoints and permissions as before (the server decides what each person may see
 // and do); only the presentation changed and prompt() dialogs became proper modals.
-import { h, icon, button, badge, card, banner, stepper, field, input, select, textarea, toast, promptModal, confirmModal } from '/ui.js';
+import { h, icon, button, badge, card, banner, stepper, field, input, select, textarea, toast, promptModal, confirmModal, openDrawer } from '/ui.js';
 
 const CAT = { objective: 'Objectives', competency: 'Competencies', initiative: 'Internal initiatives' };
 const STEPS = [['draft_plan', 'Plan'], ['approved_plan', 'Approved'], ['self_assessment', 'Self'], ['manager_review', 'Manager'], ['partner_calibration', 'Calibration'], ['released', 'Released'], ['acknowledged', 'Acknowledged'], ['closed', 'Closed']];
@@ -207,6 +207,29 @@ function ratingControl({ name, scale, value, onChange, disabled }) {
     h('input', { type: 'radio', name, value: x, checked: value === x, disabled, onchange: () => onChange(x) }), h('span', {}, String(x)))));
 }
 
+/** Pick up to three GB strategy KPIs this objective moves (Strategy 2026–2028). */
+async function linkStrategy({ api, it }) {
+  const st = await api('/api/strategy');
+  const chosen = new Set((it.strategy || []).map((k) => k.id));
+  const note = h('p', { class: 'muted', 'aria-live': 'polite' });
+  const upd = () => { note.textContent = `${chosen.size} of 3 chosen`; };
+  const body = h('div', { class: 'stack' }, h('p', {}, `Which GB strategy KPIs does “${it.title}” move? Choose up to three.`), note,
+    ...[...new Set(st.objectives.map((o) => o.theme))].map((th) => h('fieldset', { class: 'carry' }, h('legend', {}, th),
+      st.objectives.filter((o) => o.theme === th).map((o) => {
+        const ks = st.kpis.filter((k) => k.objectives.includes(o.code));
+        return h('div', { class: 'stack' }, h('strong', {}, `${o.code} ${o.title_en}`), ks.map((k) => h('label', { class: 'check-row' },
+          h('input', { type: 'checkbox', value: k.id, checked: chosen.has(k.id), 'data-kpi': k.id, onchange: (e) => {
+            if (e.target.checked && chosen.size >= 3) { e.target.checked = false; toast('Choose at most three', 'danger'); return; }
+            document.querySelectorAll(`input[data-kpi="${k.id}"]`).forEach((x) => { x.checked = e.target.checked; });
+            e.target.checked ? chosen.add(k.id) : chosen.delete(k.id); upd();
+          } }), `${k.code} ${k.name_en}`)));
+      }))));
+  upd();
+  openDrawer({ title: 'Link to GB strategy', iconName: 'target', body, footer: (close) => button('Save links', { variant: 'primary', iconName: 'check', onClick: async () => {
+    try { await api(`/api/plan-items/${it.id}/strategy`, { method: 'POST', body: { kpiIds: [...chosen] } }); toast('Strategy links saved'); close(); rerender(); } catch (e) { toast(e.message, 'danger'); }
+  } }) });
+}
+
 function itemCard({ api, v, it, editSelf, editMgr, calib, setItem, act }) {
   const scale = v.scale; const anchors = it.anchors || scale.anchors;
   const metaBits = [it.weight != null ? `Weight ${it.weight}%` : 'Weight to agree', it.target ? `Target: ${it.target}` : null, it.kpi ? `KPI: ${it.kpi}` : null, it.expected_proficiency ? `Expected proficiency ${it.expected_proficiency}` : null].filter(Boolean);
@@ -239,8 +262,13 @@ function itemCard({ api, v, it, editSelf, editMgr, calib, setItem, act }) {
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Calibrated rating'), ratingControl({ name: `cal_${it.id}`, scale, value: it.calibrated_rating, onChange: (x) => act(() => api(`/api/plans/${v.id}/items/${it.id}/calibrate`, { method: 'POST', body: { calibrated_rating: x, reason: reason.value } }), 'Calibration saved') })),
     ] : [h('div', { class: 'item-rating' }, h('strong', {}, it.calibrated_rating)), it.calibration_reason ? h('p', { class: 'muted' }, it.calibration_reason) : null])));
   }
+  const links = it.strategy || [];
+  const canLink = v.can_link_strategy && it.category !== 'competency';
+  const strat = links.length || canLink ? h('div', { class: 'kpi-links' }, icon('target'), h('span', { class: 'muted' }, links.length ? 'Supports GB strategy:' : 'Not linked to a GB strategy KPI yet'),
+    links.map((k) => h('span', { class: 'tag tag-info', title: k.name_en }, `${k.code} ${k.name_en}`)),
+    canLink ? button(links.length ? 'Change' : 'Link to strategy', { size: 'sm', variant: 'ghost', iconName: 'pencil', onClick: () => linkStrategy({ api, it }) }) : null) : null;
   return h('article', { class: 'item-card card' },
-    h('header', { class: 'item-head' }, h('div', {}, h('h3', {}, it.title, it.carried_from_item_id ? badge('Carried forward', 'info') : null), h('p', { class: 'muted' }, metaBits.join(' · '))),
+    h('header', { class: 'item-head' }, h('div', {}, h('h3', {}, it.title, it.carried_from_item_id ? badge('Carried forward', 'info') : null), h('p', { class: 'muted' }, metaBits.join(' · ')), strat),
       it.na ? badge(it.na_approved ? 'N/A approved' : 'N/A proposed', it.na_approved ? 'neutral' : 'warning') : null),
     h('div', { class: 'item-body' },
       it.description ? h('p', {}, it.description) : null,

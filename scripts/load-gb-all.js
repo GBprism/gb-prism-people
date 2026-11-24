@@ -6,6 +6,7 @@
 //   <dir>/leaveboard/*.xlsx        LeaveBoard exports (General situation, Annual situation, Attendance)
 //   <dir>/reviewers-2026.xlsx      2026 PMS – Consultant Reviewers workbook
 //   <dir>/hr-evidence.json         facts verified from email (insurer list, contracts, probation)
+//   <dir>/library.json             clients, engagements, proposals and GB strategy KPIs (see src/domain/library.js)
 //
 //   node scripts/load-gb-all.js --dir config/private/real [--db data/prism-people.db] [--cutover 2026-11-19] [--dry-run]
 // --dry-run runs everything against a temporary copy of the database and prints the report.
@@ -23,6 +24,7 @@ import { previewLeaveboard, applyLeaveboard, postOpeningBalances } from '../src/
 import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides, applyPhotos, applyServiceLines } from '../src/imports/gbworkbook.js';
 import { sha256 } from '../src/imports/xlsx.js';
 import { SERVICE_LINES } from '../src/domain/projects.js';
+import { applyLibrary } from '../src/domain/library.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const dir = arg('dir', 'config/private/real');
@@ -112,6 +114,11 @@ for (const f of fs.readdirSync(dir).filter((x) => /^projects-evidence.*\.json$/.
 if (has('photos')) log('Photos', applyPhotos(db, actor, fs.readdirSync(path.join(dir, 'photos')).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort()
   .map((f) => ({ filename: f, buffer: fs.readFileSync(path.join(dir, 'photos', f)) }))));
 if (has('service-lines.json')) log('Service lines', applyServiceLines(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'service-lines.json'), 'utf8')), SERVICE_LINES));
+// 7. knowledge library (clients, engagements, proposals) and GB strategy KPIs — after the projects so links resolve
+if (has('library.json')) {
+  const r = applyLibrary(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'library.json'), 'utf8')));
+  log('Library and strategy', [`${r.clients} clients, ${r.engagements} engagements, ${r.proposals} proposals, ${r.objectives} objectives, ${r.kpis} KPIs`, r.kept ? `${r.kept} rows edited in the portal kept as they are` : null, ...r.problems].filter(Boolean));
+}
 
 const n = (sql) => db.prepare(sql).get(actor.tenantId).n;
 log('Totals', [`people ${n('SELECT COUNT(*) n FROM users WHERE tenant_id = ? AND active = 1')}`, `profiles ${n('SELECT COUNT(*) n FROM employee_profiles WHERE tenant_id = ?')}`,

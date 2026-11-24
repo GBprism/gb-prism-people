@@ -303,6 +303,38 @@ export const MIGRATIONS = [
      user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL, mime TEXT NOT NULL,
      data BLOB NOT NULL, sha256 TEXT NOT NULL, source TEXT, updated_by TEXT, updated_at TEXT NOT NULL);
    ALTER TABLE projects ADD COLUMN service_line TEXT;`,
+  // ---- 015 knowledge library (clients, engagements, proposals) and GB strategy KPIs ---------------
+  // Visible to every active colleague. No fees, values or contract terms are stored here.
+  `CREATE TABLE clients (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, name_en TEXT NOT NULL, name_ar TEXT,
+     short TEXT, sector TEXT, country TEXT, drive_url TEXT, notes TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE engagements (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES clients(id), key TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, domain TEXT, service_line TEXT, scope_en TEXT, scope_ar TEXT,
+     year_from INTEGER, year_to INTEGER,
+     status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('running','completed','on_hold')),
+     lead_name TEXT, team_names TEXT, subcontractor TEXT, drive_url TEXT,
+     project_id TEXT REFERENCES projects(id), source TEXT, updated_by TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE proposals (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES clients(id), key TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, domain TEXT, submitted_on TEXT,
+     outcome TEXT NOT NULL DEFAULT 'submitted' CHECK (outcome IN ('drafting','submitted','won','lost','withdrawn','no_go')),
+     decided_on TEXT, outcome_note TEXT, owner_name TEXT, drive_url TEXT,
+     engagement_id TEXT REFERENCES engagements(id), source TEXT, updated_by TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE strategy_objectives (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, theme TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, code));
+   CREATE TABLE strategy_kpis (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name_en TEXT NOT NULL, name_ar TEXT,
+     objective_codes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, code));
+   CREATE TABLE plan_item_kpi_links (
+     plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE, kpi_id TEXT NOT NULL REFERENCES strategy_kpis(id),
+     tenant_id TEXT NOT NULL, linked_by TEXT, linked_at TEXT NOT NULL, PRIMARY KEY (plan_item_id, kpi_id));
+   CREATE INDEX engagements_client ON engagements(client_id);
+   CREATE INDEX proposals_client ON proposals(client_id);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

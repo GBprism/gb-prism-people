@@ -111,6 +111,12 @@ cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-all.js --
 
 Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-dd` only once GB has set the LeaveBoard cutover date; this posts opening balances. Re-running is safe. Restart afterwards with `sudo systemctl restart gb-prism`.
 
+## Library and strategy KPIs
+
+`library.json` in the private bundle holds every client, engagement (English and Arabic scope, years, status, lead, team, Drive folder), proposal outcome, and the 2026–2028 strategy objectives and KPIs. `load-gb-all.js` loads it after the projects so engagements link to the projects register (confirmed team members then appear automatically). Re-running never overwrites an engagement or proposal a partner has edited in the portal.
+
+Everyone signed in can read the Library. Partners and People Ops change status, Drive links, scope and proposal outcomes there. No fees, contract values or client contacts are stored. Each person links their objectives to up to three strategy KPIs from their review page; colleagues see how many people support each KPI, partners and People Ops also see who.
+
 ## Leave approver and LeaveBoard cutover (GB decisions)
 
 ```bash

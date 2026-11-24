@@ -9,6 +9,7 @@ import * as proj from '../domain/projects.js';
 import * as ai from '../domain/ai.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
+import * as lib from '../domain/library.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances, reconcile, compareSnapshots } from '../imports/leaveboard.js';
 import { previewPlans, applyPlans, previewHistory, applyHistory } from '../imports/pms.js';
 import { previewGbForms, applyGbForms } from '../imports/gbform.js';
@@ -315,6 +316,16 @@ export function buildApi(db) {
   r.post('/api/projects', ({ actor, body }) => ({ id: proj.createProject(db, actor, body) }));
   r.post('/api/projects/:id/service-line', ({ actor, params, body }) => proj.setServiceLine(db, actor, params.id, body.line));
   r.get('/api/service-lines', () => proj.SERVICE_LINES);
+
+  // ---------------------------------------------- library and strategy (everyone reads) --
+  r.get('/api/library', ({ actor }) => lib.libraryView(db, actor));
+  r.post('/api/library/engagements', ({ actor, body }) => lib.saveEngagement(db, actor, null, body));
+  r.patch('/api/library/engagements/:id', ({ actor, params, body }) => lib.saveEngagement(db, actor, params.id, body));
+  r.patch('/api/library/clients/:id', ({ actor, params, body }) => lib.saveClient(db, actor, params.id, body));
+  r.post('/api/library/proposals', ({ actor, body }) => lib.saveProposal(db, actor, null, body));
+  r.patch('/api/library/proposals/:id', ({ actor, params, body }) => lib.saveProposal(db, actor, params.id, body));
+  r.get('/api/strategy', ({ actor }) => lib.strategyView(db, actor));
+  r.post('/api/plan-items/:id/strategy', ({ actor, params, body }) => lib.linkPlanItem(db, actor, params.id, body.kpiIds || []));
   r.post('/api/projects/:id/lead', ({ actor, params, body }) => proj.setProjectLead(db, actor, params.id, body.userId));
   r.post('/api/projects/:id/approve', ({ actor, params }) => { proj.approveProject(db, actor, params.id); return { ok: true }; });
   r.post('/api/projects/:id/assignments', ({ actor, params, body }) => ({ id: proj.addAssignment(db, actor, { ...body, projectId: params.id }) }));
