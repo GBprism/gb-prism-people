@@ -1,0 +1,21 @@
+/* Style-guide page layout only (not used by the app). */
+.sg { padding: var(--page-pad); max-inline-size: var(--content-max); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section-gap); }
+.sg-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.sg-swatches { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.sg-swatch { border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; background: var(--color-surface); }
+.sg-swatch .chip-color { block-size: 56px; }
+.sg-swatch .meta { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.sg-swatch .meta code { color: var(--color-text-3); }
+.c-navy { background: var(--gb-navy); } .c-blue { background: var(--gb-blue); } .c-cyan { background: var(--gb-cyan); } .c-sky { background: var(--gb-sky); }
+.c-midnight { background: var(--gb-midnight); } .c-canvas { background: var(--color-canvas); } .c-border { background: var(--color-border); } .c-text { background: var(--color-text); }
+.sg-type > * + * { margin-block-start: var(--space-2); }
+.t-xs { font-size: var(--text-xs); } .t-sm { font-size: var(--text-sm); } .t-base { font-size: var(--text-base); } .t-md { font-size: var(--text-md); }
+.t-lg { font-size: var(--text-lg); } .t-xl { font-size: var(--text-xl); } .t-2xl { font-size: var(--text-2xl); font-family: var(--font-heading); font-weight: 600; } .t-3xl { font-size: var(--text-3xl); font-family: var(--font-heading); font-weight: 600; }
+.sg-shells { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
+.sg-shell { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; block-size: 420px; }
+.sg-shell .app-shell { min-block-size: 0; block-size: 100%; }
+.sg-shell .sidebar { position: static; block-size: 100%; }
+.sg-shell .main { background: var(--color-canvas); overflow: hidden; }
+.sg-shell .page { gap: var(--space-4); }
+.sg-shell .page-header h1 { font-size: var(--text-xl); }
+@media (max-width: 900px) { .sg-shell .sidebar { position: static; transform: none; inline-size: auto; } .sg-shell .app-shell { grid-template-columns: 200px 1fr; } .sg-shells { grid-template-columns: 1fr; } }

@@ -96,3 +96,34 @@ This pulls the latest code from GitHub and restarts the app. Data, settings and 
 | Secrets and settings | `/etc/gb-prism/env` (readable only by root and the app) |
 | GB private config | `/opt/gb-prism/config/private` |
 | Logs | `sudo journalctl -u gb-prism -n 100` |
+
+## Loading GB's real data (one command)
+
+All real data lives in a private folder that is never committed: roster, decisions, 2026 forms, the 2025 PMS tab, LeaveBoard exports, the reviewer workbook and `hr-evidence.json` (facts checked against email). Upload the private bundle `gb-real-data.zip` to the server, then:
+
+```bash
+sudo mkdir -p /opt/gb-prism/config/private/real && sudo unzip -o ~/gb-real-data.zip -d /opt/gb-prism/config/private/real && sudo chown -R gbprism /opt/gb-prism/config/private && rm ~/gb-real-data.zip
+```
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/load-gb-all.js --dir config/private/real --db /var/lib/gb-prism/prism-people.db --dry-run
+```
+
+Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-dd` only once GB has set the LeaveBoard cutover date; this posts opening balances. Re-running is safe. Restart afterwards with `sudo systemctl restart gb-prism`.
+
+## Leave approver and LeaveBoard cutover (GB decisions)
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.js --db /var/lib/gb-prism/prism-people.db --approver layan@gb-advisory.com --cutover 2026-11-24
+```
+
+Until opening balances are posted, Time off tells people to keep using LeaveBoard. At close of business on the cutover day, export a fresh LeaveBoard **Annual situation** report (and the **Leaves** report for bookings after the cutover). Upload them in Admin → Imports, apply, then **Post opening balances** with the cutover date. That opens time off in Prism.
+
+## LeaveBoard cutover checklist (24 Nov 2026)
+
+1. **Before 24 Nov:** approve the leave policy in Admin → Policy settings.
+2. **2027 entitlements (GB decision E):** dry-run, then post, so January requests are not charged against 0:
+   `node scripts/leave-cutover.js grant --year 2027 --file config/private/real/entitlements-2027.csv --dry-run`, then without `--dry-run`.
+3. **Close of business 24 Nov:** export LeaveBoard *Annual situation* and *Leaves*. In Admin → Imports upload each → Preview → Apply. On the Annual situation import, set the switch-over date to `2026-11-24` and click **Post opening balances**.
+4. **Verify:** `node scripts/leave-cutover.js check --db /var/lib/gb-prism/prism-people.db`. Every row must say OK (exit code 0). Anything "NOT posted", "≠ LeaveBoard" or "0 days – confirm" is fixed before telling the team.
+5. Time off opens in Prism only once opening balances exist at the cutover date. Set LeaveBoard to read-only.

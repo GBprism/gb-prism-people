@@ -15,8 +15,14 @@ const v = db.prepare('SELECT MAX(version) v FROM schema_migrations').get().v;
 if (v !== MIGRATIONS.length) { failed++; console.error(`migrations: applied ${v} of ${MIGRATIONS.length}`); }
 try {
   const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split('\n');
-  const bad = tracked.filter((f) => /^private-extracts\/|^config\/private\/|^backup\/|\.db$|^data\/(?!\.gitkeep)/.test(f) || /\.xlsx$/.test(f));
+  const bad = tracked.filter((f) => /^private-extracts\/|^config\/private\/|^backup\/|\.db$|^data\/(?!\.gitkeep)/.test(f) || (/\.xlsx$/.test(f) && !/^public\/templates\//.test(f)));
   if (bad.length) { failed++; console.error('private or data files tracked by git:', bad); }
 } catch { /* not a git checkout */ }
+// design rule: colours live only in public/tokens.css
+for (const f of ['public/components.css', 'public/styleguide.css', 'public/ui.js', 'public/shell.js', 'public/app.css', ...fs.readdirSync('public/screens').map((x) => `public/screens/${x}`)]) {
+  const hits = fs.readFileSync(f, 'utf8').split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(l) && !/xmlns|http/.test(l));
+  for (const [n] of hits) { failed++; console.error(`hard-coded colour: ${f}:${n} (use a token)`); }
+}
+try { execFileSync(process.execPath, ['scripts/check-contrast.js'], { stdio: 'inherit' }); } catch { failed++; }
 console.log(failed ? `check: ${failed} problem(s)` : `check: ok (${MIGRATIONS.length} migrations)`);
 process.exit(failed ? 1 : 0);
