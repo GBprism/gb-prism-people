@@ -24,7 +24,8 @@ export const CANDIDATE_POLICY = {
   hoursPerDay: 8,
   leaveNoticeDays: 14, // handbook: 14 days' advance notice for leave
   noticeAppliesTo: ['AV'],
-  carryover: { maxDays: 10, expiresOn: '09-30' }, // up to 10 days, expiring in September
+  annualEntitlementDays: 14, // GB decided 24 Nov 2026: 14 days a year for everyone, new joiners included
+  carryover: { maxDays: null, expiresOn: null }, // GB decided 24 Nov 2026: all unused days carry into the next year (no cap set, no expiry set)
   offsite: { monthlyQuota: 4, requiresPostProbation: true, noticeDays: 1 },
   projectCoverageCheck: true,
   allowNegative: ['COO'], // vendor shows negative COO availability for 2 people — CONFIRM
@@ -99,7 +100,7 @@ const settingOf = (db, tenantId, key) => { const r = db.prepare('SELECT value_js
 /** Is this person away (approved, non off-site leave) on the given day? */
 export function isAway(db, tenantId, userId, day = todayIn()) {
   return !!db.prepare(`SELECT 1 FROM leave_requests r JOIN leave_types t ON t.id = r.type_id WHERE r.tenant_id = ? AND r.user_id = ? AND r.state = 'approved'
-      AND t.category != 'offsite' AND r.start_date <= ? AND r.end_date >= ?`).get(tenantId, userId, day, day);
+      AND t.category NOT IN ('offsite','client') AND r.start_date <= ? AND r.end_date >= ?`).get(tenantId, userId, day, day);
 }
 /** Backup approver sees a request once the approver is away or it has waited this many days (default 2). */
 export const escalateDays = (db, tenantId) => Number(settingOf(db, tenantId, 'leave_escalate_days') ?? 2);
@@ -352,7 +353,8 @@ export function runCarryover(db, actor, { fromYear, typeCode = 'AV' }) {
     const out = [];
     for (const u of users) {
       const b = balance(db, actor.tenantId, u.id, t.id, fromYear);
-      const carry = Math.max(0, Math.min(b.posted_x100, pol.carryover.maxDays * 100));
+      const cap = pol.carryover?.maxDays; // null = no cap
+      const carry = Math.max(0, cap == null ? b.posted_x100 : Math.min(b.posted_x100, cap * 100));
       if (!carry) continue;
       const made = ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year: fromYear + 1, kind: 'carryover', amount: carry, date: `${fromYear + 1}-01-01`, actorId: actor.id, note: `Carried from ${fromYear}`, key: `carry:${u.id}:${t.id}:${fromYear + 1}` });
       if (made) ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year: fromYear, kind: 'adjustment', amount: -carry, date: `${fromYear}-12-31`, actorId: actor.id, note: `Carried to ${fromYear + 1}`, key: `carryout:${u.id}:${t.id}:${fromYear}` });
@@ -368,6 +370,7 @@ export function runCarryoverExpiry(db, actor, { year, typeCode = 'AV', asOf }) {
   return tx(db, () => {
     const t = db.prepare('SELECT * FROM leave_types WHERE tenant_id = ? AND code = ?').get(actor.tenantId, typeCode);
     const pol = activePolicy(db, actor.tenantId, `${year}-01-01`).settings;
+    if (!pol.carryover?.expiresOn) return { expiry: null, expired: [] }; // no expiry set
     const expiry = `${year}-${pol.carryover.expiresOn}`;
     if ((asOf || todayIn()) <= expiry) return { expiry, expired: [] };
     const rows = db.prepare(`SELECT user_id, SUM(CASE WHEN kind='carryover' THEN amount_x100 ELSE 0 END) carry,
@@ -406,6 +409,6 @@ export function teamCalendar(db, actor, { from, to }) {
       JOIN users u ON u.id = r.user_id JOIN leave_types t ON t.id = r.type_id
       WHERE r.tenant_id = ? AND r.state IN ('approved','submitted') AND r.start_date <= ? AND r.end_date >= ? AND r.user_id IN (${ids.map(() => '?').join(',')})`)
     .all(actor.tenantId, to, from, ...ids);
-  return rows.map((r) => ({ name: r.name, start_date: r.start_date, end_date: r.end_date, availability: r.category === 'offsite' ? 'Working off-site' : 'Away',
+  return rows.map((r) => ({ name: r.name, start_date: r.start_date, end_date: r.end_date, availability: r.category === 'offsite' ? 'Working off-site' : r.category === 'client' ? 'At client' : 'Away',
     tentative: r.state === 'submitted', half: r.start_portion !== 'full' || r.end_portion !== 'full' }));
 }

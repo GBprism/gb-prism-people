@@ -97,7 +97,11 @@ export async function reviewScreen({ api, id }) {
     const people = a.relation === 'reviewer' && !closedStates.includes(v.state) ? await api('/api/people').catch(() => []) : [];
     const who = select([['', 'Invite someone for input'], ...people.filter((p) => p.id !== v.employee.id).map((p) => [p.id, p.name])], { 'aria-label': 'Invite someone for input' });
     projBits.push(card({ title: 'Input from seniors', iconName: 'users', body: h('div', { class: 'stack' },
-      v.input_invites?.length ? h('ul', { class: 'invite-list' }, v.input_invites.map((i) => h('li', {}, h('strong', {}, i.name), h('span', { class: 'muted' }, i.label), i.given ? badge('Given', 'success') : badge('Waiting', 'warning')))) : null,
+      v.input_invites?.length ? h('ul', { class: 'invite-list' }, v.input_invites.map((i) => h('li', {}, h('strong', {}, i.name), h('span', { class: 'muted' }, i.label), i.given ? badge('Given', 'success') : badge('Waiting', 'warning'),
+        !i.given && a.relation === 'reviewer' && !closedStates.includes(v.state) ? button('Remove', { size: 'sm', variant: 'ghost', iconName: 'x', onClick: async () => {
+          const why = await promptModal({ title: `Withdraw ${i.name}'s input request?`, label: 'Reason (optional)', required: false, confirmLabel: 'Withdraw' });
+          if (why !== null) act(() => api(`/api/plans/${id}/input-invites/remove`, { method: 'POST', body: { inviteeId: i.user_id, reason: why } }), 'Request withdrawn');
+        } }) : null))) : null,
       (v.inputs || []).map((i) => quote(`${i.author} — ${i.label}`, i.body, i.evidence_url)),
       people.length ? h('div', { class: 'inline-form' }, who, button('Invite', { onClick: () => who.value && act(() => api(`/api/plans/${id}/input-invites`, { method: 'POST', body: { inviteeId: who.value, label: 'Project feedback' } }), 'Invitation added') })) : null) }));
   }

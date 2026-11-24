@@ -20,7 +20,7 @@ import { loadActor } from '../src/domain/authz.js';
 import { previewGbForms, applyGbForms } from '../src/imports/gbform.js';
 import { previewHistoryRows, applyHistory } from '../src/imports/pms.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances } from '../src/imports/leaveboard.js';
-import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence } from '../src/imports/gbworkbook.js';
+import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides } from '../src/imports/gbworkbook.js';
 import { sha256 } from '../src/imports/xlsx.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
@@ -97,6 +97,7 @@ if (has('reviewers-2026.xlsx')) {
   log(`HR profiles (${rep.profiles.length})`, rep.profiles); log(`Reviewers (${rep.reviewers.length})`, rep.reviewers);
   log(`Project register (${rep.projects.length} lines)`, rep.projects); log(`Skipped (${rep.skipped.length})`, rep.skipped);
 }
+if (has('reviewer-overrides.json')) log('Reviewer decisions', applyReviewerOverrides(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'reviewer-overrides.json'), 'utf8'))));
 // hr-evidence.json (email) first, then the other hr-evidence-*.json reviews in name order — later files win
 for (const f of fs.readdirSync(dir).filter((x) => /^hr-evidence.*\.json$/.test(x)).sort((a, b) => (a === 'hr-evidence.json' ? -1 : b === 'hr-evidence.json' ? 1 : a.localeCompare(b)))) {
   const ev = applyHrEvidence(db, actor, JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));

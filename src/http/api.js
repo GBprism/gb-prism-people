@@ -144,6 +144,7 @@ export function buildApi(db) {
   r.post('/api/plans/:id/feedback', ({ actor, params, body }) => ({ id: perf.addProjectFeedback(db, actor, params.id, body) }));
   r.post('/api/plans/:id/category-reviewers', ({ actor, params, body }) => ({ ok: perf.setCategoryReviewer(db, actor, params.id, body) }));
   r.post('/api/plans/:id/input-invites', ({ actor, params, body }) => ({ ok: perf.inviteInput(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/input-invites/remove', ({ actor, params, body }) => ({ removed: perf.removeInputInvite(db, actor, params.id, body || {}) }));
   r.post('/api/plans/:id/inputs', ({ actor, params, body }) => ({ id: perf.addInput(db, actor, params.id, body) }));
   r.post('/api/plans/:id/reviewer-note', ({ actor, params, body }) => perf.decideReviewerNote(db, actor, params.id, body || {}));
   r.post('/api/plans/:id/actions', ({ actor, params, body }) => ({ id: perf.addDevelopmentAction(db, actor, params.id, body) }));
