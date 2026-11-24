@@ -8,10 +8,15 @@
 //   node scripts/leave-cutover.js grant --year 2027 (--file entitlements.csv | --days 14) [--dry-run] [--db …]
 //     Posts each person's annual vacation entitlement for the year (GB decision E).
 //     entitlements.csv: email,days   (people not in the file are skipped and listed)
+//     --days defaults to the policy's annualEntitlementDays (GB: 14).
+//
+//   node scripts/leave-cutover.js carryover --from 2026 [--dry-run] [--db …]
+//     Run after the last 2026 leave is recorded (from 1 Jan 2027): moves each person's unused
+//     2026 annual vacation into 2027, as the approved policy allows (GB: all unused days). Safe to re-run.
 import fs from 'node:fs';
 import { openDb } from '../src/db.js';
 import { loadActor } from '../src/domain/authz.js';
-import { balance, leaveStatus, grantEntitlements } from '../src/domain/leave.js';
+import { balance, leaveStatus, grantEntitlements, runCarryover, activePolicy } from '../src/domain/leave.js';
 import { fmtX100 } from '../src/domain/decimal.js';
 
 const [cmd] = process.argv.slice(2);
@@ -56,8 +61,11 @@ if (cmd === 'grant') {
     const byEmail = Object.fromEntries(lines.map(([e, d]) => [e.toLowerCase(), d]));
     rows = people.filter((p) => byEmail[p.email.toLowerCase()]).map((p) => ({ userId: p.id, days: byEmail[p.email.toLowerCase()] }));
     skipped.push(...people.filter((p) => !byEmail[p.email.toLowerCase()]).map((p) => p.name));
-  } else if (arg('days')) rows = people.map((p) => ({ userId: p.id, days: arg('days') }));
-  else { console.error('Pass --file entitlements.csv or --days N'); process.exit(1); }
+  } else {
+    const days = arg('days') || activePolicy(db, tenant, `${year}-01-01`).settings.annualEntitlementDays;
+    if (!days) { console.error('Pass --file entitlements.csv or --days N'); process.exit(1); }
+    rows = people.map((p) => ({ userId: p.id, days }));
+  }
   if (process.argv.includes('--dry-run')) {
     for (const r of rows) console.log(`${pad(people.find((p) => p.id === r.userId).name, 24)}${r.days} days`);
     if (skipped.length) console.log(`Skipped (not in file): ${skipped.join(', ')}`);
@@ -68,4 +76,18 @@ if (cmd === 'grant') {
   if (skipped.length) console.log(`Skipped (not in file): ${skipped.join(', ')}`);
   process.exit(0);
 }
-console.log('Usage: leave-cutover.js check | grant --year YYYY (--file f.csv | --days N) [--dry-run]');
+if (cmd === 'carryover') {
+  const from = Number(arg('from'));
+  if (!from) { console.error('Pass --from YYYY'); process.exit(1); }
+  const pol = activePolicy(db, tenant, `${from + 1}-01-01`);
+  console.log(`Policy v${pol.version} (${pol.status}): carryover ${pol.settings.carryover?.maxDays == null ? 'all unused days' : `up to ${pol.settings.carryover.maxDays} days`}`);
+  if (process.argv.includes('--dry-run')) {
+    for (const p of people) { const b = balance(db, tenant, p.id, av.id, from); console.log(`${pad(p.name, 24)}${fmtX100(b.posted_x100)} unused in ${from}`); }
+    console.log('(dry run — nothing posted)'); process.exit(0);
+  }
+  const ops = db.prepare("SELECT u.id FROM users u JOIN user_roles r ON r.user_id = u.id AND r.role IN ('people_ops','admin') WHERE u.tenant_id = ? AND u.active = 1 LIMIT 1").get(tenant);
+  const out = runCarryover(db, loadActor(db, ops.id), { fromYear: from });
+  for (const o of out) console.log(`${pad(people.find((p) => p.id === o.userId)?.name || o.userId, 24)}${fmtX100(o.carry_x100)} days ${o.created ? 'carried' : '(already carried)'}`);
+  process.exit(0);
+}
+console.log('Usage: leave-cutover.js check | grant --year YYYY [--file f.csv | --days N] [--dry-run] | carryover --from YYYY [--dry-run]');

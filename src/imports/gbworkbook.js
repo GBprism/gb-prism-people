@@ -6,7 +6,7 @@
 // Nothing here touches ratings. Run with dry=true to see the report without writing.
 import { tx, uid, now, audit } from '../db.js';
 import { currentEmployment } from '../domain/authz.js';
-import { setCategoryReviewer, inviteInput } from '../domain/performance.js';
+import { setCategoryReviewer, inviteInput, removeInputInvite } from '../domain/performance.js';
 import { createProject } from '../domain/projects.js';
 import { updateProfile } from '../domain/profiles.js';
 import { readWorkbook, str, val } from './xlsx.js';
@@ -228,6 +228,15 @@ export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
       const addGaps = (p.add_gaps || []).filter((g) => !gaps.some((x) => x.toLowerCase() === g.toLowerCase()));
       if (addGaps.length) fields.gaps = [...gaps, ...addGaps].join('; ');
       if (Object.keys(fields).length) updateProfile(db, actor, u.id, fields, { source: evidence.source || 'Gmail evidence (insurer list, contract and probation emails)' });
+      if (p.title) {
+        const emp = currentEmployment(db, u.id);
+        if (emp && emp.title !== p.title) {
+          db.prepare("UPDATE employments SET effective_to = date('now','-1 day') WHERE id = ?").run(emp.id);
+          db.prepare(`INSERT INTO employments (id, tenant_id, user_id, title, role_family, manager_id, backup_approver_id, country, hire_date, probation_end, effective_from)
+              SELECT ?, tenant_id, user_id, ?, role_family, manager_id, backup_approver_id, country, hire_date, probation_end, date('now') FROM employments WHERE id = ?`).run(uid('emp_'), p.title, emp.id);
+          audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'roster.title', entity: 'user', entityId: u.id, before: { title: emp.title }, after: { title: p.title }, reason: evidence.source });
+        }
+      }
       if (p.hire_date) {
         const emp = currentEmployment(db, u.id);
         if (emp && emp.hire_date !== p.hire_date) db.prepare('UPDATE employments SET hire_date = ? WHERE id = ?').run(p.hire_date, emp.id);
@@ -236,7 +245,7 @@ export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
         const emp = currentEmployment(db, u.id);
         if (emp && emp.probation_end !== p.probation_end) db.prepare('UPDATE employments SET probation_end = ? WHERE id = ?').run(p.probation_end, emp.id);
       }
-      report.updated.push(`${u.name}: ${[...Object.keys(fields), p.hire_date ? 'hire_date' : null, p.probation_end ? 'probation_end' : null].filter(Boolean).join(', ')}`);
+      report.updated.push(`${u.name}: ${[...Object.keys(fields), p.title ? 'title' : null, p.hire_date ? 'hire_date' : null, p.probation_end ? 'probation_end' : null].filter(Boolean).join(', ')}`);
     }
     if (dry) throw Object.assign(new Error('dry-run'), { dry: true });
   };
@@ -287,4 +296,37 @@ export function applyProjectEvidence(db, actor, file, { dry = false } = {}) {
   };
   try { tx(db, run); } catch (e) { if (!e.dry) throw e; report.dry = true; }
   return report;
+}
+
+/**
+ * GB decisions that refine the reviewer matrix, applied after it on every load:
+ * { remove_inputs: [{ employee, invitee, reason }] } — withdraws unanswered input requests.
+ */
+export function applyReviewerOverrides(db, actor, file, { year = 2026 } = {}) {
+  const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
+    .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
+  const match = nameMatcher(users);
+  const out = [];
+  if (file.partner_for_all) {
+    const partner = match(file.partner_for_all);
+    if (!partner) out.push(`Partner ${file.partner_for_all}: not on the roster`);
+    else {
+      const plans = db.prepare(`SELECT p.id, p.user_id FROM plans p JOIN cycles c ON c.id = p.cycle_id WHERE p.tenant_id = ? AND c.year = ? AND c.status != 'historical'
+          AND p.partner_id IS NULL AND p.state NOT IN ('partner_calibration','released','acknowledged','closed')`).all(actor.tenantId, year).filter((p) => p.user_id !== partner.id);
+      for (const p of plans) {
+        db.prepare('UPDATE plans SET partner_id = ? WHERE id = ?').run(partner.id, p.id);
+        audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'plan.partner', entity: 'plan', entityId: p.id, after: { partnerId: partner.id }, reason: 'GB decision: calibrating partner' });
+      }
+      out.push(`Calibrating partner ${partner.name} set on ${plans.length} review(s)`);
+    }
+  }
+  for (const r of file.remove_inputs || []) {
+    const e = match(r.employee); const i = match(r.invitee);
+    if (!e || !i) { out.push(`${r.employee} / ${r.invitee}: not on the roster`); continue; }
+    const plan = db.prepare("SELECT p.id FROM plans p JOIN cycles c ON c.id = p.cycle_id WHERE p.user_id = ? AND c.year = ? AND c.status != 'historical'").get(e.id, year);
+    if (!plan) { out.push(`${e.name}: no ${year} review`); continue; }
+    try { out.push(`${e.name}: ${removeInputInvite(db, actor, plan.id, { inviteeId: i.id, reason: r.reason }) ? `input request to ${i.name} withdrawn` : `no input request to ${i.name}`}`); }
+    catch (err) { out.push(`${e.name}: ${err.message}`); }
+  }
+  return out;
 }

@@ -274,6 +274,21 @@ export const MIGRATIONS = [
   `ALTER TABLE employee_profiles ADD COLUMN leave_history TEXT;
    ALTER TABLE employee_profiles ADD COLUMN equipment TEXT;
    ALTER TABLE employee_profiles ADD COLUMN learning_notes TEXT;`,
+  // ---- 013 'client' leave-type category (GB: "At client" days are their own category, outside the off-site quota).
+  // SQLite cannot alter a CHECK constraint, so the table is rebuilt with the same ids, following SQLite's
+  // documented procedure: foreign keys off around the transaction, then foreign_key_check before commit.
+  { fkOff: true, sql: `CREATE TABLE leave_types_v13 (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL,
+     category TEXT NOT NULL CHECK (category IN ('leave','offsite','overtime','client')),
+     unit TEXT NOT NULL DEFAULT 'day', tracks_balance INTEGER NOT NULL DEFAULT 1,
+     allow_partial INTEGER NOT NULL DEFAULT 1, requires_cover INTEGER NOT NULL DEFAULT 0,
+     reason_required INTEGER NOT NULL DEFAULT 0, vendor_label TEXT, active INTEGER NOT NULL DEFAULT 1,
+     UNIQUE(tenant_id, code));
+   INSERT INTO leave_types_v13 SELECT id, tenant_id, code, name, category, unit, tracks_balance, allow_partial, requires_cover, reason_required, vendor_label, active FROM leave_types;
+   DROP TABLE leave_types;
+   ALTER TABLE leave_types_v13 RENAME TO leave_types;
+   INSERT OR IGNORE INTO leave_types (id, tenant_id, code, name, category, tracks_balance, requires_cover)
+     SELECT 'lt_' || id || '_AC', id, 'AC', 'At client', 'client', 0, 0 FROM tenants WHERE id = 'gb-advisory';` },
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {
@@ -287,13 +302,18 @@ export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {
 export function migrate(db) {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
   const done = new Set(db.prepare('SELECT version FROM schema_migrations').all().map((r) => r.version));
-  MIGRATIONS.forEach((sql, i) => {
+  MIGRATIONS.forEach((m, i) => {
     const v = i + 1;
     if (done.has(v)) return;
-    tx(db, () => {
-      db.exec(sql);
-      db.prepare('INSERT INTO schema_migrations VALUES (?, ?)').run(v, new Date().toISOString());
-    });
+    const { sql, fkOff } = typeof m === 'string' ? { sql: m, fkOff: false } : m;
+    if (fkOff) db.exec('PRAGMA foreign_keys = OFF'); // must be set outside a transaction
+    try {
+      tx(db, () => {
+        db.exec(sql);
+        if (fkOff) { const bad = db.prepare('PRAGMA foreign_key_check').all(); if (bad.length) throw new Error(`migration ${v}: ${bad.length} foreign key problem(s)`); }
+        db.prepare('INSERT INTO schema_migrations VALUES (?, ?)').run(v, new Date().toISOString());
+      });
+    } finally { if (fkOff) db.exec('PRAGMA foreign_keys = ON'); }
   });
 }
 
