@@ -45,7 +45,7 @@ const cycle = db.prepare("SELECT * FROM cycles WHERE tenant_id = ? AND year = 20
 
 // 2. 2026 PMS forms
 if (has('forms') && cycle) {
-  const files = fs.readdirSync(path.join(dir, 'forms')).filter((f) => f.endsWith('.xlsx') && !/template|muhyeddin/i.test(f))
+  const files = fs.readdirSync(path.join(dir, 'forms')).filter((f) => f.endsWith('.xlsx') && !/template/i.test(f))
     .map((f) => ({ filename: f, buffer: fs.readFileSync(path.join(dir, 'forms', f)) }));
   // forms are named "<work-email name>-2026_….xlsx" (several have a blank name cell): register that name as a verified alias
   for (const f of files) {
