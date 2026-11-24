@@ -18,6 +18,8 @@ const AMMAN_OFFSET_H = 3; // Asia/Amman is UTC+3 all year since 2022
 export function detectReport(sheets) {
   const data = sheets.find((s) => s.name === 'Data') || sheets[0];
   const h = (data.rows[0] || []).map(str);
+  // real LeaveBoard Reports → Leaves: Employee | Leave | Range | Days | Status | Approver | Comment | Approver's comment | Registered on
+  if (h[0] === 'Employee' && h.includes('Leave') && h.includes('Range') && h.includes('Status')) return 'leaves';
   if (h.some((x) => /leave type/i.test(x)) && h.some((x) => /status/i.test(x)) && h.some((x) => /^employee$/i.test(x))) return 'leaves';
   if (h[0] !== 'Employee') return null;
   if (h[1] === 'Year' && h.some((x) => / - Used$/.test(x))) return 'annual_situation';
@@ -180,7 +182,58 @@ export function parseAttendanceCell(v) {
 // ------------------------------------------------- Leaves (dated requests) --
 // Expected columns (to verify against a real Reports → Leaves export):
 // ID, Employee, Email, Leave type, Start date, End date, Start portion, End portion, Duration, Status
-function parseLeaves(db, actor, sheet, { dateFormat }) {
+function parseLeaves(db, actor, sheet, opts) {
+  const header = sheet.rows[0].map(str);
+  if (header.includes('Range')) return parseLeavesGrouped(db, actor, sheet, opts);
+  return parseLeavesFlat(db, actor, sheet, opts);
+}
+
+/**
+ * The real export (checked against Leaves-2026-11-24): one row with the person's name, then one row per
+ * request with the name blank. No ID column, so a stable key is built from person, type, range and the
+ * "Registered on" time. Range is "MM/DD/YYYY" or "MM/DD/YYYY - MM/DD/YYYY"; Days can be 0.5.
+ * The export does not say which half of a day was taken, so half days are recorded as a morning.
+ */
+function parseLeavesGrouped(db, actor, sheet, { dateFormat }) {
+  const header = sheet.rows[0].map(str);
+  const col = (name) => header.indexOf(name);
+  const ix = { name: col('Employee'), type: col('Leave'), range: col('Range'), days: col('Days'), status: col('Status'), approver: col('Approver'), comment: col('Comment'), registered: col('Registered on') };
+  const types = Object.fromEntries(db.prepare('SELECT * FROM leave_types WHERE tenant_id = ?').all(actor.tenantId).map((t) => [t.vendor_label || t.name, t]));
+  const rows = []; let person = null;
+  sheet.rows.slice(1).forEach((r, i) => {
+    const rowNo = i + 2;
+    if (str(r[ix.name])) { person = str(r[ix.name]); return; }
+    const type = str(r[ix.type]); if (!type) return;
+    const issues = [];
+    if (!person) issues.push('Request row before any employee name');
+    const range = str(r[ix.range]);
+    const [a, b] = range.split(/\s+-\s+/);
+    const pd = (x) => { const v = (x || '').trim(); return isISODate(v) ? v : parseVendorDate(v, dateFormat); };
+    const start = pd(a); const end = b ? pd(b) : start;
+    if (!start || !end) issues.push(`Unparseable range "${range}"`);
+    if (!types[type]) issues.push(`Leave type "${type}" not mapped`);
+    const status = str(r[ix.status]).toLowerCase();
+    const state = { approved: 'approved', pending: 'submitted', 'awaiting approval': 'submitted', declined: 'declined', rejected: 'declined', canceled: 'cancelled', cancelled: 'cancelled' }[status];
+    if (!state) issues.push(`Unknown status "${status}"`);
+    let durX100 = null; try { durX100 = toX100(val(r[ix.days])); } catch (e) { issues.push(e.message); }
+    const half = durX100 !== null && durX100 % 100 === 50;
+    const registered = ix.registered >= 0 ? str(r[ix.registered]) : '';
+    const id = `lbk:${sha256(Buffer.from([person, type, range, registered].join('|'))).slice(0, 24)}`;
+    const m = matchPerson(db, actor.tenantId, { name: person, source: 'leaveboard' });
+    const raw = { id, name: person, type, start, end, range, start_portion: half && start === end ? 'am' : 'full', end_portion: half && start !== end ? 'am' : 'full',
+      duration_x100: durX100, status, state, approver: ix.approver >= 0 ? str(r[ix.approver]) : null, registered, half_day_unknown: half || undefined };
+    const existing = db.prepare("SELECT id, state FROM leave_requests WHERE tenant_id = ? AND source = 'leaveboard' AND source_ref = ?").get(actor.tenantId, id);
+    rows.push({ sheet: sheet.name, rowNo, sourceKey: id, raw, userId: m.userId, matchStatus: m.matchStatus, issues,
+      action: issues.length ? 'reject' : !m.userId ? 'review' : existing ? (existing.state === state ? 'unchanged' : 'update') : 'insert' });
+  });
+  const people = new Set(rows.map((r) => r.raw.name)).size;
+  return { summary: { named_rows: rows.length, people, blocking: [], by_action: countBy(rows, 'action'), by_state: countBy(rows.map((r) => r.raw), 'state'), by_type: countBy(rows.map((r) => r.raw), 'type'),
+    warnings: ['Approved requests are already counted in the LeaveBoard Annual Situation balances, so they are recorded as history and never deducted again',
+      'The export has no request ID; re-importing the same file changes nothing, but an edited request in LeaveBoard would arrive as a new row',
+      ...(rows.some((r) => r.raw.half_day_unknown) ? ['Half days: the export does not say morning or afternoon; recorded as a morning'] : [])] }, rows };
+}
+
+function parseLeavesFlat(db, actor, sheet, { dateFormat }) {
   const header = sheet.rows[0].map(str);
   const col = (re) => header.findIndex((h) => re.test(h));
   const ix = { id: col(/^id$/i), name: col(/^employee$/i), email: col(/e-?mail/i), type: col(/leave type/i), start: col(/^(start|from)/i), end: col(/^(end|to)\b/i),
