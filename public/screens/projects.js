@@ -14,6 +14,8 @@ export async function projectsScreen({ api, me, query = '' }) {
   let list = await api('/api/projects');
   const canApprove = me.roles.includes('partner') || me.roles.includes('people_ops') || me.roles.includes('admin');
   const people = canApprove ? await api('/api/people').catch(() => []) : [];
+  const LINES = await api('/api/service-lines').catch(() => []);
+  let line = 'all';
   let filter = params.get('status') === 'candidate' ? 'candidate' : params.get('p') ? 'mine' : 'all';
   const focus = params.get('p');
   const act = async (fn, ok) => { try { await fn(); toast(ok); list = await api('/api/projects'); draw(); } catch (e) { toast(e.message, 'danger'); } };
@@ -38,7 +40,12 @@ export async function projectsScreen({ api, me, query = '' }) {
   function projectCard(p) {
     const team = [...p.team_confirmed, ...p.team_historical, ...p.team_unconfirmed];
     const status = p.register_status === 'approved' ? badge('Approved', 'success') : p.register_status === 'archived' ? badge('Archived', 'neutral') : badge('Awaiting approval', 'warning');
+    const canLine = canApprove || p.is_lead;
+    const lineCtl = canLine && p.kind !== 'initiative' ? select([['', 'Service line…'], ...LINES.map((l) => [l, l])], { 'aria-label': `Service line for ${p.name}`, class: 'select select-sm',
+      onchange: (e) => act(() => api(`/api/projects/${p.id}/service-line`, { method: 'POST', body: { line: e.target.value } }), 'Service line updated') }) : null;
+    if (lineCtl) lineCtl.value = p.service_line || '';
     const head = h('div', { class: 'project-meta' }, badge(p.kind === 'proposal' ? 'Proposal' : p.kind === 'initiative' ? 'Initiative' : 'Engagement', 'neutral'), status,
+      lineCtl || (p.service_line ? badge(p.service_line, 'info') : null),
       h('span', { class: 'muted' }, icon('user'), ` Lead ${p.lead_name || 'to be identified'}`), p.start_date ? h('span', { class: 'muted' }, icon('calendar-days'), ` ${when(p.start_date, p.end_date)}`) : null);
     const teamList = team.length ? h('ul', { class: 'asg-list' }, team.map((a) => {
       const [label, tone] = ASG[a.status] || [a.status, 'neutral'];
@@ -71,11 +78,12 @@ export async function projectsScreen({ api, me, query = '' }) {
     return c;
   }
 
+  const lineSel = select([['all', 'All service lines'], ...LINES.map((l) => [l, l]), ['none', 'No service line yet']], { 'aria-label': 'Filter by service line', class: 'select select-sm', onchange: (e) => { line = e.target.value; draw(); } });
   function draw() {
-    const shown = list.filter(FILTERS[filter] || FILTERS.all);
+    const shown = list.filter(FILTERS[filter] || FILTERS.all).filter((p) => line === 'all' || (line === 'none' ? !p.service_line && p.kind !== 'initiative' : p.service_line === line));
     const pending = count(FILTERS.candidate);
     wrap.replaceChildren(
-      h('div', { class: 'toolbar' }, chips, canApprove && pending && filter === 'candidate' ? button(`Approve all with a lead (${list.filter(FILTERS.candidate).filter((p) => p.lead_user_id).length})`, { variant: 'secondary', iconName: 'check', onClick: async () => {
+      h('div', { class: 'toolbar' }, h('div', { class: 'row' }, chips, lineSel), canApprove && pending && filter === 'candidate' ? button(`Approve all with a lead (${list.filter(FILTERS.candidate).filter((p) => p.lead_user_id).length})`, { variant: 'secondary', iconName: 'check', onClick: async () => {
         const noLead = list.filter(FILTERS.candidate).filter((p) => !p.lead_user_id);
         for (const p of list.filter(FILTERS.candidate).filter((x) => x.lead_user_id)) { try { await api(`/api/projects/${p.id}/approve`, { method: 'POST' }); } catch (e) { toast(`${p.name}: ${e.message}`, 'danger'); } }
         toast(noLead.length ? `Approved. Not approved until a lead is set: ${noLead.map((p) => p.name).join(', ')}` : 'Projects approved'); list = await api('/api/projects'); draw();

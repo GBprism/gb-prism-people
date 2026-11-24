@@ -10,7 +10,7 @@ let chromium = null;
 try { ({ chromium } = createRequire(import.meta.url)('playwright')); } catch { /* not installed */ }
 
 const PAGES = {
-  [SYN.emp]: ['#/', '#/timeoff', '#/history', `#/review/plan_${SYN.emp}_2026`, '#/projects', '#/ai', '#/profile'],
+  [SYN.emp]: ['#/team', '#/', '#/timeoff', '#/history', `#/review/plan_${SYN.emp}_2026`, '#/projects', '#/ai', '#/profile'],
   [SYN.manager]: ['#/inbox', `#/review/plan_${SYN.emp}_2026`],
   [SYN.ops]: ['#/people', '#/admin/dashboard', '#/admin/roster', '#/admin/imports', '#/admin/policy', '#/admin/reminders', '#/admin/ai', '#/admin/audit'],
 };

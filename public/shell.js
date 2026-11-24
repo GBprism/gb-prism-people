@@ -1,7 +1,7 @@
 // App shell: grouped sidebar (collapsible to an icon rail), top bar with
 // breadcrumbs, ⌘K command palette, inbox bell, help and the user menu.
 // Pure presentation — it only calls existing read endpoints (/api/inbox, /api/people).
-import { h, icon, button, openDrawer } from '/ui.js';
+import { h, icon, avatar, button, openDrawer } from '/ui.js';
 
 /** Route metadata: nav placement, page icon, breadcrumb and one-line description. */
 export const PAGES = [
@@ -13,6 +13,7 @@ export const PAGES = [
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', parent: 'history', desc: null },
   { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Projects', icon: 'folder-kanban', group: 'Performance', desc: 'Engagements, deliverables and who contributed what' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', group: 'Performance', desc: 'Examples of AI-assisted work and seat confirmations' },
+  { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', group: 'Workspace', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
   { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', group: 'Workspace', desc: 'Your employment details, benefits and 2026 work — visible to you, People Ops and partners only' },
   { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', group: 'Admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
   { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Completion', icon: 'layout-dashboard', group: 'Admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },
@@ -30,7 +31,6 @@ const visible = (me) => PAGES.filter((p) => p.group && (!p.show || p.show(me)));
 export const appsFor = (me) => GROUPS.map((group) => ({ group, items: visible(me).filter((p) => p.group === group) })).filter((g) => g.items.length);
 
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
-const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('');
 
 export function mountShell({ me, api, onSignOut }) {
   document.body.className = 'ui';
@@ -60,7 +60,7 @@ export function mountShell({ me, api, onSignOut }) {
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/history' }, icon('clipboard-check'), 'My reviews'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/timeoff' }, icon('calendar-days'), 'My time off'),
     h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: onSignOut }, icon('log-out', { flip: true }), 'Sign out'));
-  const avatarBtn = h('button', { class: 'avatar-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `Account: ${me.name}`, onclick: (e) => { e.stopPropagation(); toggleMenu(); } }, h('span', { class: 'avatar' }, initials(me.name)));
+  const avatarBtn = h('button', { class: 'avatar-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `Account: ${me.name}`, onclick: (e) => { e.stopPropagation(); toggleMenu(); } }, avatar(me));
   const toggleMenu = (force) => { const open = force ?? userMenu.hidden; userMenu.hidden = !open; avatarBtn.setAttribute('aria-expanded', String(open)); if (open) userMenu.querySelector('a,button')?.focus(); };
   document.addEventListener('click', (e) => { if (!userMenu.hidden && !userMenu.contains(e.target)) toggleMenu(false); });
   userMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { toggleMenu(false); avatarBtn.focus(); } });

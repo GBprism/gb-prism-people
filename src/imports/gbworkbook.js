@@ -8,7 +8,7 @@ import { tx, uid, now, audit } from '../db.js';
 import { currentEmployment } from '../domain/authz.js';
 import { setCategoryReviewer, inviteInput, removeInputInvite } from '../domain/performance.js';
 import { createProject } from '../domain/projects.js';
-import { updateProfile } from '../domain/profiles.js';
+import { updateProfile, setPhoto, PUBLIC_FIELDS } from '../domain/profiles.js';
 import { readWorkbook, str, val } from './xlsx.js';
 
 const SOURCE = '2026 PMS – Consultant Reviewers workbook';
@@ -214,7 +214,7 @@ export function applyHrEvidence(db, actor, evidence, { dry = false } = {}) {
   const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
     .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
   const match = nameMatcher(users);
-  const allowed = ['level', 'date_of_birth', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'leave_history', 'equipment', 'learning_notes'];
+  const allowed = ['level', 'date_of_birth', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'leave_history', 'equipment', 'learning_notes', ...PUBLIC_FIELDS];
   const report = { updated: [], skipped: [] };
   const run = () => {
     for (const p of evidence.people || []) {
@@ -327,6 +327,32 @@ export function applyReviewerOverrides(db, actor, file, { year = 2026 } = {}) {
     if (!plan) { out.push(`${e.name}: no ${year} review`); continue; }
     try { out.push(`${e.name}: ${removeInputInvite(db, actor, plan.id, { inviteeId: i.id, reason: r.reason }) ? `input request to ${i.name} withdrawn` : `no input request to ${i.name}`}`); }
     catch (err) { out.push(`${e.name}: ${err.message}`); }
+  }
+  return out;
+}
+
+/** Photos from a folder named <work-email name>.jpg|png (e.g. yazan.jpg for yazan@…). Unchanged photos are skipped. */
+export function applyPhotos(db, actor, files) {
+  const out = [];
+  for (const { filename, buffer } of files) {
+    const stem = filename.replace(/\.(jpe?g|png|webp)$/i, '');
+    const u = db.prepare("SELECT id, name FROM users WHERE tenant_id = ? AND active = 1 AND lower(email) LIKE lower(?) || '@%'").get(actor.tenantId, stem);
+    if (!u) { out.push(`${filename}: no active person with that email name`); continue; }
+    try { const r = setPhoto(db, actor, u.id, buffer, { source: 'GB Advisory Company Profile' }); out.push(`${u.name}: ${r.changed ? 'photo set' : 'unchanged'}`); }
+    catch (e) { out.push(`${u.name}: ${e.message}`); }
+  }
+  return out;
+}
+
+/** { lines: { "<project name>": "<service line>" } } — sets a project's service line only where none is set. */
+export function applyServiceLines(db, actor, file, SERVICE_LINES) {
+  const out = [];
+  for (const [name, line] of Object.entries(file.lines || {})) {
+    if (!SERVICE_LINES.includes(line)) { out.push(`${name}: unknown service line "${line}"`); continue; }
+    const p = db.prepare('SELECT id, service_line FROM projects WHERE tenant_id = ? AND lower(name) = lower(?)').get(actor.tenantId, name);
+    if (!p) { out.push(`${name}: no such project`); continue; }
+    if (p.service_line) continue;
+    db.prepare('UPDATE projects SET service_line = ? WHERE id = ?').run(line, p.id); out.push(`${name} → ${line}`);
   }
   return out;
 }

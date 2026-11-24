@@ -45,6 +45,18 @@ export function button(label, { variant = 'secondary', size, iconName, onClick, 
 
 const TONE_ICON = { success: 'circle-check', warning: 'triangle-alert', danger: 'circle-x', info: 'info', neutral: 'circle-dot' };
 /** Status badge: always icon + text + tint (never colour alone). */
+/** Person avatar: their photo when there is one, otherwise initials. size: sm (32) | md (48) | lg (96) | xl (160). */
+export function avatar(person, size = 'sm') {
+  const ini = String(person?.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0].toUpperCase()).join('');
+  const box = h('span', { class: `avatar avatar-${size}`, 'aria-hidden': 'true' }, ini);
+  if (person?.photo) {
+    const img = h('img', { src: person.photo, alt: '', loading: 'lazy', class: 'avatar-img' });
+    img.addEventListener('error', () => img.remove()); // fall back to initials
+    box.append(img);
+  }
+  return box;
+}
+
 export function badge(text, tone = 'neutral', iconName) {
   return h('span', { class: `badge badge-${tone}` }, icon(iconName || TONE_ICON[tone] || 'circle-dot'), text);
 }
@@ -168,7 +180,7 @@ export function openDrawer({ title, iconName, body, footer }) {
   const panel = h('aside', { class: 'drawer', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' });
   const close = () => { release(); overlay.remove(); panel.remove(); };
   panel.append(h('header', { class: 'drawer-header' }, iconName ? icon(iconName, { size: 'lg' }) : null, h('h2', {}, title), button('', { variant: 'ghost', iconName: 'x', ariaLabel: 'Close', onClick: close })),
-    h('div', { class: 'drawer-body' }, body), footer ? h('footer', { class: 'drawer-footer' }, footer(close)) : null);
+    ...[h('div', { class: 'drawer-body' }, body), footer ? h('footer', { class: 'drawer-footer' }, footer(close)) : null].filter(Boolean));
   overlay.addEventListener('click', close);
   document.body.append(overlay, panel);
   const release = trap(panel, close);

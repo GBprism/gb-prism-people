@@ -57,7 +57,9 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
       let body = {};
       if (!route.opts.raw && req.method !== 'GET') { const b = (await readBody(req, 1e6)).toString(); body = b ? JSON.parse(b) : {}; }
       const out = await route.handler({ actor, params: route.params, body, raw, ctx: { url } });
-      if (out && out.__raw !== undefined) return send(res, 200, out.__raw, { 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.filename}"` });
+      if (out && out.__raw !== undefined) return send(res, 200, out.__raw, out.inline
+        ? { 'Content-Type': out.contentType, 'Cache-Control': 'private, max-age=86400' }
+        : { 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.filename}"` });
       return send(res, 200, out ?? { ok: true });
     } catch (e) {
       if (e instanceof AppError) return send(res, e.status, { error: e.code, message: e.message, details: e.details });

@@ -20,8 +20,9 @@ import { loadActor } from '../src/domain/authz.js';
 import { previewGbForms, applyGbForms } from '../src/imports/gbform.js';
 import { previewHistoryRows, applyHistory } from '../src/imports/pms.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances } from '../src/imports/leaveboard.js';
-import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides } from '../src/imports/gbworkbook.js';
+import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides, applyPhotos, applyServiceLines } from '../src/imports/gbworkbook.js';
 import { sha256 } from '../src/imports/xlsx.js';
+import { SERVICE_LINES } from '../src/domain/projects.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const dir = arg('dir', 'config/private/real');
@@ -107,6 +108,10 @@ for (const f of fs.readdirSync(dir).filter((x) => /^projects-evidence.*\.json$/.
   const ev = applyProjectEvidence(db, actor, JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
   log(`Projects from ${f} (${ev.projects.length} projects, ${ev.assignments.length} assignments)`, [...ev.projects, ...ev.assignments, ...ev.skipped.map((x) => `skipped: ${x}`)]);
 }
+
+if (has('photos')) log('Photos', applyPhotos(db, actor, fs.readdirSync(path.join(dir, 'photos')).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort()
+  .map((f) => ({ filename: f, buffer: fs.readFileSync(path.join(dir, 'photos', f)) }))));
+if (has('service-lines.json')) log('Service lines', applyServiceLines(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'service-lines.json'), 'utf8')), SERVICE_LINES));
 
 const n = (sql) => db.prepare(sql).get(actor.tenantId).n;
 log('Totals', [`people ${n('SELECT COUNT(*) n FROM users WHERE tenant_id = ? AND active = 1')}`, `profiles ${n('SELECT COUNT(*) n FROM employee_profiles WHERE tenant_id = ?')}`,

@@ -37,6 +37,17 @@ export function setProjectLead(db, actor, projectId, leadUserId) {
   return { ok: true };
 }
 
+/** GB's five service lines (company profile, Jan 2026). */
+export const SERVICE_LINES = ['Strategic Planning and Growth', 'Business Process Re-engineering', 'HR Transformation', 'Operating Model and Governance', 'AI Readiness and Strategy'];
+export function setServiceLine(db, actor, projectId, line) {
+  if (!isOps(actor) && !has(actor, 'partner') && !isLead(db, actor, projectId)) throw forbid();
+  assertTenantProject(db, actor, projectId);
+  if (line && !SERVICE_LINES.includes(line)) throw bad('Unknown service line');
+  db.prepare('UPDATE projects SET service_line = ? WHERE id = ?').run(line || null, projectId);
+  audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'project.service_line', entity: 'project', entityId: projectId, after: { line } });
+  return { ok: true };
+}
+
 export function addAssignment(db, actor, { projectId, userId, role, status = 'provisional', startDate, endDate, source }) {
   assertTenantProject(db, actor, projectId); assertTenantUsers(db, actor, userId);
   if (!isOps(actor) && !isLead(db, actor, projectId)) throw forbid();

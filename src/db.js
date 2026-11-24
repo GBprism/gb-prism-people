@@ -289,6 +289,20 @@ export const MIGRATIONS = [
    ALTER TABLE leave_types_v13 RENAME TO leave_types;
    INSERT OR IGNORE INTO leave_types (id, tenant_id, code, name, category, tracks_balance, requires_cover)
      SELECT 'lt_' || id || '_AC', id, 'AC', 'At client', 'client', 0, 0 FROM tenants WHERE id = 'gb-advisory';` },
+  // ---- 014 company-profile facts (shown to colleagues), photos, and GB service lines on projects --
+  `ALTER TABLE employee_profiles ADD COLUMN public_title TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN years_experience TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN expertise TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN education TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN certifications TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN bio TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN industries TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN functions TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN cv_projects TEXT;
+   CREATE TABLE user_photos (
+     user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL, mime TEXT NOT NULL,
+     data BLOB NOT NULL, sha256 TEXT NOT NULL, source TEXT, updated_by TEXT, updated_at TEXT NOT NULL);
+   ALTER TABLE projects ADD COLUMN service_line TEXT;`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

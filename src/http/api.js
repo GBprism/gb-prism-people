@@ -28,7 +28,7 @@ export function buildApi(db) {
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title,
-      nav: { inbox: reviews > 0 || approvals > 0 || leads > 0 || has(actor, 'partner'), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') } };
+      nav: { inbox: reviews > 0 || approvals > 0 || leads > 0 || has(actor, 'partner'), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // directory (names only) for pickers such as "who covers your work"
@@ -37,6 +37,9 @@ export function buildApi(db) {
   // --------------------------------------------------------- HR profiles --
   // the person, People Ops/admin and partners only (enforced in the domain)
   r.get('/api/profile', ({ actor }) => prof.getProfile(db, actor, actor.id));
+  r.get('/api/team', ({ actor }) => prof.teamDirectory(db, actor));
+  r.get('/api/people/:id/photo', ({ actor, params }) => { const p = prof.getPhoto(db, actor, params.id); return { __raw: Buffer.from(p.data), contentType: p.mime, inline: true }; });
+  r.post('/api/profiles/:id/photo', ({ actor, params, raw }) => prof.setPhoto(db, actor, params.id, raw), { raw: true });
   r.get('/api/profiles', ({ actor }) => prof.listProfiles(db, actor));
   r.get('/api/profiles/:id', ({ actor, params }) => prof.getProfile(db, actor, params.id));
   r.patch('/api/profiles/:id', ({ actor, params, body }) => prof.updateProfile(db, actor, params.id, body || {}, { source: 'Edited in GB Prism' }));
@@ -310,6 +313,8 @@ export function buildApi(db) {
   // ------------------------------------------------------------- projects --
   r.get('/api/projects', ({ actor }) => proj.registerView(db, actor));
   r.post('/api/projects', ({ actor, body }) => ({ id: proj.createProject(db, actor, body) }));
+  r.post('/api/projects/:id/service-line', ({ actor, params, body }) => proj.setServiceLine(db, actor, params.id, body.line));
+  r.get('/api/service-lines', () => proj.SERVICE_LINES);
   r.post('/api/projects/:id/lead', ({ actor, params, body }) => proj.setProjectLead(db, actor, params.id, body.userId));
   r.post('/api/projects/:id/approve', ({ actor, params }) => { proj.approveProject(db, actor, params.id); return { ok: true }; });
   r.post('/api/projects/:id/assignments', ({ actor, params, body }) => ({ id: proj.addAssignment(db, actor, { ...body, projectId: params.id }) }));

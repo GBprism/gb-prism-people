@@ -134,3 +134,33 @@ test('HR evidence from email fills profile fields, clears matching gaps, ignores
   assert.deepEqual(p.gaps_list, ['confirm gym claims']);
   assert.ok(!JSON.stringify(db.prepare('SELECT * FROM employee_profiles').all()).includes('999'));
 });
+
+test('Team directory: everyone sees company-profile facts and photos, never HR fields', async () => {
+  const { teamDirectory, setPhoto, getPhoto } = await import('../src/domain/profiles.js');
+  const { db, as } = fresh();
+  updateProfile(db, as(SYN.ops), SYN.emp, { public_title: 'Consultant', education: 'B.Sc. Industrial Engineering', bio: 'Analyst', date_of_birth: '2001-01-01', medical_insurance_status: 'Enrolled', gaps: 'DOB' });
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
+  // photos: the person themself or People Ops / partners; images only
+  assert.throws(() => setPhoto(db, as(SYN.peer), SYN.emp, png), /Not permitted/);
+  assert.throws(() => setPhoto(db, as(SYN.emp), SYN.emp, Buffer.from('<svg onload=alert(1)>')), /JPEG, PNG or WebP/);
+  assert.equal(setPhoto(db, as(SYN.emp), SYN.emp, png).changed, true);
+  assert.equal(setPhoto(db, as(SYN.ops), SYN.emp, png).changed, false); // same image → no change
+  const team = teamDirectory(db, as(SYN.peer));
+  const eli = team.find((p) => p.id === SYN.emp);
+  assert.equal(eli.education, 'B.Sc. Industrial Engineering'); assert.match(eli.photo, /^\/api\/people\/u_emp\/photo\?v=/);
+  for (const hr of ['date_of_birth', 'medical_insurance_status', 'gaps', 'contract_status', 'leave_history']) assert.ok(!(hr in eli), `${hr} must not be in the team directory`);
+  assert.equal(getPhoto(db, as(SYN.peer), SYN.emp).mime, 'image/png');
+  assert.throws(() => getPhoto(db, as(SYN.otherUser), SYN.emp), /not found/i);
+});
+
+test('service lines: partners, People Ops and the project lead set them; others cannot', async () => {
+  const { createProject, setServiceLine, SERVICE_LINES } = await import('../src/domain/projects.js');
+  const { db, as } = fresh();
+  const p = createProject(db, as(SYN.ops), { name: 'Omicron', kind: 'engagement', leadUserId: SYN.lead });
+  assert.throws(() => setServiceLine(db, as(SYN.peer), p, SERVICE_LINES[0]), /Not permitted/);
+  assert.throws(() => setServiceLine(db, as(SYN.partner), p, 'Made up'), /Unknown service line/);
+  setServiceLine(db, as(SYN.lead), p, 'HR Transformation');
+  assert.equal(db.prepare('SELECT service_line FROM projects WHERE id = ?').get(p).service_line, 'HR Transformation');
+  setServiceLine(db, as(SYN.partner), p, '');
+  assert.equal(db.prepare('SELECT service_line FROM projects WHERE id = ?').get(p).service_line, null);
+});

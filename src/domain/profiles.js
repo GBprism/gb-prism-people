@@ -1,10 +1,14 @@
 // HR profiles. Visible to the person, People Ops/admin and partners only —
 // never to managers, peers or project leads (they hold insurance and date of birth).
+import crypto from 'node:crypto';
 import { tx, now, audit, bad, forbid, notFound } from '../db.js';
 import { isOps, has, currentEmployment } from './authz.js';
 import { todayIn } from './dates.js';
 
-export const PROFILE_FIELDS = ['level', 'date_of_birth', 'age_recorded', 'age_recorded_on', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'projects_summary', 'proposals_summary', 'gaps', 'leave_history', 'equipment', 'learning_notes'];
+export const PROFILE_FIELDS = ['level', 'date_of_birth', 'age_recorded', 'age_recorded_on', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'projects_summary', 'proposals_summary', 'gaps', 'leave_history', 'equipment', 'learning_notes',
+  ...['public_title', 'years_experience', 'expertise', 'education', 'certifications', 'bio', 'industries', 'functions', 'cv_projects']];
+/** Facts from the company profile: shown to every colleague (they are already public to clients). */
+export const PUBLIC_FIELDS = ['public_title', 'years_experience', 'expertise', 'education', 'certifications', 'bio', 'industries', 'functions', 'cv_projects'];
 const canSee = (actor, userId) => actor.id === userId || isOps(actor) || has(actor, 'partner');
 const canEdit = (actor) => isOps(actor) || has(actor, 'partner');
 
@@ -35,7 +39,7 @@ export function getProfile(db, actor, userId) {
     hire_date: emp?.hire_date ?? null, years_with_gb: years(emp?.hire_date, today), probation_end: emp?.probation_end ?? null,
     age: p.date_of_birth ? age(p.date_of_birth, today) : null, ...Object.fromEntries(PROFILE_FIELDS.map((f) => [f, p[f] ?? null])),
     gaps_list: (p.gaps || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean),
-    source: p.source ?? null, updated_at: p.updated_at ?? null,
+    source: p.source ?? null, updated_at: p.updated_at ?? null, photo: photoUrl(db, userId),
     assignments, can_edit: canEdit(actor),
   };
 }
@@ -68,5 +72,42 @@ export function listProfiles(db, actor) {
       (SELECT COUNT(*) FROM project_assignments pa WHERE pa.user_id = u.id) assignments
     FROM users u LEFT JOIN employments e ON e.user_id = u.id AND e.effective_to IS NULL LEFT JOIN users m ON m.id = e.manager_id
     LEFT JOIN employee_profiles p ON p.user_id = u.id WHERE u.tenant_id = ? AND u.active = 1 ORDER BY u.name`).all(actor.tenantId)
-    .map((r) => ({ ...r, years_with_gb: years(r.hire_date, today), gaps_list: (r.gaps || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean) }));
+    .map((r) => ({ ...r, photo: photoUrl(db, r.id), years_with_gb: years(r.hire_date, today), gaps_list: (r.gaps || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean) }));
+}
+
+/** Team directory for everyone in the workspace: name, title, photo and company-profile facts only. */
+export function teamDirectory(db, actor) {
+  return db.prepare(`SELECT u.id, u.name, u.email, e.title, ${PUBLIC_FIELDS.map((f) => `p.${f}`).join(', ')}, ph.updated_at photo_at
+      FROM users u LEFT JOIN employments e ON e.user_id = u.id AND e.effective_to IS NULL LEFT JOIN employee_profiles p ON p.user_id = u.id
+      LEFT JOIN user_photos ph ON ph.user_id = u.id WHERE u.tenant_id = ? AND u.active = 1 ORDER BY u.name`).all(actor.tenantId)
+    .map((r) => ({ ...r, photo: r.photo_at ? `/api/people/${r.id}/photo?v=${encodeURIComponent(r.photo_at)}` : null, photo_at: undefined }));
+}
+
+export const photoUrl = (db, userId) => { const r = db.prepare('SELECT updated_at FROM user_photos WHERE user_id = ?').get(userId); return r ? `/api/people/${userId}/photo?v=${encodeURIComponent(r.updated_at)}` : null; };
+
+export function getPhoto(db, actor, userId) {
+  const r = db.prepare('SELECT * FROM user_photos WHERE user_id = ? AND tenant_id = ?').get(userId, actor.tenantId);
+  if (!r) throw notFound();
+  return r;
+}
+
+const MIME = (b) => (b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg' : b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? 'image/png'
+  : b.slice(0, 4).toString() === 'RIFF' && b.slice(8, 12).toString() === 'WEBP' ? 'image/webp' : null);
+
+/** Set a photo: the person themself, People Ops or a partner. JPEG, PNG or WebP up to 1.5 MB. */
+export function setPhoto(db, actor, userId, buffer, { source = 'Uploaded in GB Prism' } = {}) {
+  const u = db.prepare('SELECT tenant_id FROM users WHERE id = ?').get(userId);
+  if (!u || u.tenant_id !== actor.tenantId) throw notFound();
+  if (actor.id !== userId && !canEdit(actor)) throw forbid();
+  if (!buffer?.length) throw bad('Choose a photo');
+  if (buffer.length > 1.5 * 1024 * 1024) throw bad('Photo is larger than 1.5 MB');
+  const mime = MIME(buffer); if (!mime) throw bad('Use a JPEG, PNG or WebP image');
+  const sha = crypto.createHash('sha256').update(buffer).digest('hex');
+  const cur = db.prepare('SELECT sha256 FROM user_photos WHERE user_id = ?').get(userId);
+  if (cur?.sha256 === sha) return { changed: false };
+  db.prepare(`INSERT INTO user_photos (user_id, tenant_id, mime, data, sha256, source, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, sha256 = excluded.sha256, source = excluded.source, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+    .run(userId, u.tenant_id, mime, buffer, sha, source, actor.id, now());
+  audit(db, { tenantId: u.tenant_id, actorId: actor.id, action: 'profile.photo', entity: 'user', entityId: userId, reason: source });
+  return { changed: true };
 }
