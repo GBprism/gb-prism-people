@@ -79,13 +79,14 @@ export function seedSynthetic(db, { year = 2026 } = {}) {
 
     // leave types (vendor_label = LeaveBoard category name)
     const LT = (code, name, category, o = {}) => db.prepare(`INSERT INTO leave_types (id, tenant_id, code, name, category, tracks_balance, allow_partial, requires_cover, reason_required, vendor_label)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(`lt_${code}`, SYN.tenant, code, name, category, o.balance === false ? 0 : 1, o.partial === false ? 0 : 1, o.cover ? 1 : 0, o.reason ? 1 : 0, o.vendor ?? name);
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(`lt_${code}`, SYN.tenant, code, name, category, o.balance === false ? 0 : 1, o.partial === false ? 0 : 1, o.cover ? 1 : 0, o.reason ? 1 : 0, o.vendor === undefined ? name : o.vendor);
     LT('AV', 'Annual vacation', 'leave', { cover: true, vendor: 'Annual Vacation' });
     LT('SL', 'Sick leave', 'leave', { reason: true, vendor: 'Sick leave' });
     LT('WFH', 'Work from home / off-site', 'offsite', { balance: false, vendor: 'Work From Home' });
     LT('COO', 'Compensation of overtime', 'leave', { vendor: 'Compensation of Overtime' });
     LT('OT', 'Overtime', 'overtime', { balance: false, vendor: 'Overtime' });
     LT('WL', 'Wedding leave', 'leave', { partial: false, vendor: 'Wedding Leave' });
+    LT('AC', 'At client', 'client', { balance: false, vendor: null });
     db.prepare(`INSERT INTO policy_versions (id, tenant_id, version, effective_from, status, settings_json, note) VALUES ('pol_1', ?, 1, '2024-01-01', 'awaiting_confirmation', ?, ?)`)
       .run(SYN.tenant, J(CANDIDATE_POLICY), 'Transcribed from the handbook and LeaveBoard; every value awaits GB confirmation');
     const H = (d, n) => db.prepare("INSERT INTO holidays (id, tenant_id, calendar, date, name) VALUES (?,?, 'JO', ?, ?)").run(`hol_${d}`, SYN.tenant, d, n);

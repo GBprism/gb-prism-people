@@ -4,7 +4,7 @@ import { tx, now, audit, bad, forbid, notFound } from '../db.js';
 import { isOps, has, currentEmployment } from './authz.js';
 import { todayIn } from './dates.js';
 
-export const PROFILE_FIELDS = ['level', 'date_of_birth', 'age_recorded', 'age_recorded_on', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'projects_summary', 'proposals_summary', 'gaps'];
+export const PROFILE_FIELDS = ['level', 'date_of_birth', 'age_recorded', 'age_recorded_on', 'probation_status', 'contract_status', 'social_security_status', 'medical_insurance_status', 'gym_stipend_status', 'projects_summary', 'proposals_summary', 'gaps', 'leave_history', 'equipment', 'learning_notes'];
 const canSee = (actor, userId) => actor.id === userId || isOps(actor) || has(actor, 'partner');
 const canEdit = (actor) => isOps(actor) || has(actor, 'partner');
 

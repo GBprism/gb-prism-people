@@ -118,3 +118,12 @@ cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-leave-rules.j
 ```
 
 Until opening balances are posted, Time off tells people to keep using LeaveBoard. At close of business on the cutover day, export a fresh LeaveBoard **Annual situation** report (and the **Leaves** report for bookings after the cutover). Upload them in Admin → Imports, apply, then **Post opening balances** with the cutover date. That opens time off in Prism.
+
+## LeaveBoard cutover checklist (24 Nov 2026)
+
+1. **Before 24 Nov:** approve the leave policy in Admin → Policy settings.
+2. **2027 entitlements (GB decision E):** dry-run, then post, so January requests are not charged against 0:
+   `node scripts/leave-cutover.js grant --year 2027 --file config/private/real/entitlements-2027.csv --dry-run`, then without `--dry-run`.
+3. **Close of business 24 Nov:** export LeaveBoard *Annual situation* and *Leaves*. In Admin → Imports upload each → Preview → Apply. On the Annual situation import, set the switch-over date to `2026-11-24` and click **Post opening balances**.
+4. **Verify:** `node scripts/leave-cutover.js check --db /var/lib/gb-prism/prism-people.db`. Every row must say OK (exit code 0). Anything "NOT posted", "≠ LeaveBoard" or "0 days – confirm" is fixed before telling the team.
+5. Time off opens in Prism only once opening balances exist at the cutover date. Set LeaveBoard to read-only.

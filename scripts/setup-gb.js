@@ -66,7 +66,8 @@ tx(db, () => {
     .run(`cyc_${TENANT}_2026`, TENANT, c26.self_due, c26.manager_due, c26.calibration_due, J(scoring));
   db.prepare("INSERT OR IGNORE INTO cycles (id, tenant_id, year, name, status, self_due, scoring_json) VALUES (?,?,2027,'2027 plan','planning','2027-02-15',?)").run(`cyc_${TENANT}_2027`, TENANT, J(scoring));
   const LT = [['AV', 'Annual vacation', 'leave', 1, 'Annual Vacation', 1], ['SL', 'Sick leave', 'leave', 1, 'Sick leave', 0], ['WFH', 'Work from home / off-site', 'offsite', 0, 'Work From Home', 0],
-    ['COO', 'Compensation of overtime', 'leave', 1, 'Compensation of Overtime', 0], ['OT', 'Overtime', 'overtime', 0, 'Overtime', 0], ['WL', 'Wedding leave', 'leave', 1, 'Wedding Leave', 0]];
+    ['COO', 'Compensation of overtime', 'leave', 1, 'Compensation of Overtime', 0], ['OT', 'Overtime', 'overtime', 0, 'Overtime', 0], ['WL', 'Wedding leave', 'leave', 1, 'Wedding Leave', 0],
+    ['AC', 'At client', 'client', 0, null, 0]]; // GB decided 24 Nov 2026: client days are their own category, outside the off-site quota
   for (const [code, name, cat, bal, vendor, cover] of LT) db.prepare('INSERT OR IGNORE INTO leave_types (id, tenant_id, code, name, category, tracks_balance, requires_cover, vendor_label) VALUES (?,?,?,?,?,?,?,?)')
     .run(`lt_${TENANT}_${code}`, TENANT, code, name, cat, bal, cover, vendor);
   db.prepare("INSERT OR IGNORE INTO policy_versions (id, tenant_id, version, effective_from, status, settings_json, note) VALUES (?, ?, 1, '2026-01-01', 'awaiting_confirmation', ?, ?)")

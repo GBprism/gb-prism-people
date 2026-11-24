@@ -497,7 +497,7 @@ export function planView(db, actor, planId) {
   view.category_reviewers = db.prepare('SELECT r.category, u.id, u.name FROM plan_category_reviewers r JOIN users u ON u.id = r.user_id WHERE r.plan_id = ?').all(planId);
   if (c.viewProjectFeedback) {
     view.inputs = db.prepare('SELECT i.label, i.body, i.evidence_url, i.created_at, u.name author FROM plan_inputs i JOIN users u ON u.id = i.author_id WHERE i.plan_id = ? ORDER BY i.created_at').all(planId);
-    view.input_invites = db.prepare('SELECT i.label, u.name, EXISTS(SELECT 1 FROM plan_inputs x WHERE x.plan_id = i.plan_id AND x.author_id = i.invitee_id) given FROM plan_input_invites i JOIN users u ON u.id = i.invitee_id WHERE i.plan_id = ?').all(planId);
+    view.input_invites = db.prepare('SELECT i.label, u.name, u.id user_id, EXISTS(SELECT 1 FROM plan_inputs x WHERE x.plan_id = i.plan_id AND x.author_id = i.invitee_id) given FROM plan_input_invites i JOIN users u ON u.id = i.invitee_id WHERE i.plan_id = ?').all(planId);
   }
   if (c.relation !== 'self') {
     const n = db.prepare('SELECT n.rationale, n.status, n.source, n.confirmed_at, u.name confirmed_by FROM plan_reviewer_notes n LEFT JOIN users u ON u.id = n.confirmed_by WHERE n.plan_id = ?').get(planId);
@@ -549,6 +549,20 @@ export function setCategoryReviewer(db, actor, planId, { category, userId }) {
 }
 
 /** Invite someone (e.g. the senior who led the person's projects) to give written input. */
+/** Withdraw an input request that has not been answered (lead reviewer or People Ops). */
+export function removeInputInvite(db, actor, planId, { inviteeId, reason }) {
+  return tx(db, () => {
+    const plan = getPlan(db, planId);
+    if (plan.tenant_id !== actor.tenantId) throw forbid();
+    const c = planAccess(db, actor, plan);
+    if (!isOps(actor) && c?.relation !== 'reviewer') throw forbid();
+    if (db.prepare('SELECT 1 FROM plan_inputs WHERE plan_id = ? AND author_id = ?').get(planId, inviteeId)) throw conflict('Input was already given and stays on the record');
+    const r = db.prepare('DELETE FROM plan_input_invites WHERE plan_id = ? AND invitee_id = ?').run(planId, inviteeId);
+    if (r.changes) audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.input_uninvite', entity: 'plan', entityId: planId, reason: reason || null, after: { inviteeId } });
+    return r.changes > 0;
+  });
+}
+
 export function inviteInput(db, actor, planId, { inviteeId, label }) {
   return tx(db, () => {
     const plan = getPlan(db, planId);

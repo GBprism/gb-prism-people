@@ -109,9 +109,24 @@ test('project coverage warning and availability-only team calendar', () => withT
   assert.equal(leave.requestView(db, as(SYN.otherUser), s), null);
 }));
 
-test('carryover capped at 10 days and expiry of unused carryover', () => withToday('2027-10-05', () => {
+const setPolicy = (db, patch) => { const r = db.prepare("SELECT id, settings_json FROM policy_versions WHERE tenant_id = 'gb' ORDER BY version DESC LIMIT 1").get();
+  db.prepare('UPDATE policy_versions SET settings_json = ? WHERE id = ?').run(JSON.stringify({ ...JSON.parse(r.settings_json), ...patch }), r.id); };
+
+test('GB carryover rule: all unused days carry into the next year, nothing expires', () => withToday('2027-10-05', () => {
   const { db, as } = fresh();
   const ops = as(SYN.ops);
+  setPolicy(db, { carryover: { maxDays: null, expiresOn: null } });
+  leave.adjustBalance(db, ops, { userId: SYN.emp, typeCode: 'AV', year: 2026, amountX100: 200, note: 'Synthetic top-up' }); // 16 days left
+  leave.runCarryover(db, ops, { fromYear: 2026 });
+  assert.equal(bal(db, SYN.emp, 'AV', 2027).posted_x100, 1600);
+  assert.equal(bal(db, SYN.emp, 'AV', 2026).posted_x100, 0);
+  assert.deepEqual(leave.runCarryoverExpiry(db, ops, { year: 2027 }).expired, []);
+}));
+
+test('carryover capped at 10 days and expiry of unused carryover (when a policy sets a cap)', () => withToday('2027-10-05', () => {
+  const { db, as } = fresh();
+  const ops = as(SYN.ops);
+  setPolicy(db, { carryover: { maxDays: 10, expiresOn: '09-30' } });
   leave.adjustBalance(db, ops, { userId: SYN.emp, typeCode: 'AV', year: 2026, amountX100: 200, note: 'Synthetic top-up' }); // 16 days left
   const c = leave.runCarryover(db, ops, { fromYear: 2026 });
   assert.equal(c.find((x) => x.userId === SYN.emp).carry_x100, 1000);
@@ -141,4 +156,37 @@ test('GB rules: one leave approver for everyone; requests wait for the LeaveBoar
   db.prepare("DELETE FROM leave_ledger WHERE tenant_id = 'gb' AND kind = 'opening'").run();
   const closed = leave.previewRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2027-01-10', end: '2027-01-10', coverUserId: SYN.senior });
   assert.ok(closed.blocking.some((b) => /LeaveBoard cutover on 2026-12-31/.test(b)));
+}));
+
+test('backup approver: sees a request only when the approver is away or it has waited 2 days', () => {
+  const { db, as } = fresh();
+  const set = (k, v) => db.prepare('INSERT INTO settings (tenant_id, key, value_json) VALUES (?,?,?) ON CONFLICT(tenant_id, key) DO UPDATE SET value_json = excluded.value_json').run('gb', k, JSON.stringify(v));
+  set('leave_approver', SYN.manager);
+  const r = withToday(T, () => leave.submitRequest(db, as(SYN.emp), { typeCode: 'AV', start: '2026-12-07', end: '2026-12-07', coverUserId: SYN.senior, clientKey: 'bk' }));
+  const row = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(r.id);
+  assert.equal(row.approver_id, SYN.manager); assert.ok(row.backup_approver_id && row.backup_approver_id !== SYN.manager);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, T), null);
+  assert.match(leave.waitingForBackup(db, 'gb', row, '2026-11-21'), /waiting 2 days/);
+  set('leave_escalate_days', 5);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, '2026-11-21'), null);
+  // approver on approved leave today → backup sees it at once
+  db.prepare(`INSERT INTO leave_requests (id, tenant_id, user_id, type_id, start_date, end_date, chargeable_x100, breakdown_json, state, created_at)
+    VALUES ('away', 'gb', ?, 'lt_AV', ?, ?, 100, '{}', 'approved', ?)`).run(SYN.manager, T, T, T);
+  assert.equal(leave.waitingForBackup(db, 'gb', row, T), 'approver away');
+});
+
+test('"At client" days: own category, no balance, outside the off-site quota, shown as At client', () => withToday(T, () => {
+  const { db, as } = fresh();
+  const emp = as(SYN.emp);
+  // fill the 4-day off-site quota for December
+  for (const d of ['2026-12-06', '2026-12-07', '2026-12-08', '2026-12-09']) leave.submitRequest(db, emp, { typeCode: 'WFH', start: d, end: d, clientKey: `w${d}` });
+  const wfh = leave.previewRequest(db, emp, { typeCode: 'WFH', start: '2026-12-10', end: '2026-12-10' });
+  assert.ok(wfh.blocking.some((b) => /Off-site quota/.test(b)));
+  const ac = leave.previewRequest(db, emp, { typeCode: 'AC', start: '2026-12-10', end: '2026-12-10' });
+  assert.equal(ac.blocking.filter((b) => !/approver/i.test(b)).length, 0, ac.blocking.join());
+  const r = leave.submitRequest(db, emp, { typeCode: 'AC', start: '2026-12-10', end: '2026-12-10', clientKey: 'ac1' });
+  assert.equal(r.state, 'submitted');
+  assert.equal(leave.balance(db, 'gb', SYN.emp, 'lt_AV', 2026).posted_x100, leave.balance(db, 'gb', SYN.emp, 'lt_AV', 2026).posted_x100);
+  const cal = leave.teamCalendar(db, emp, { from: '2026-12-10', to: '2026-12-10' });
+  assert.ok(cal.some((c) => c.availability === 'At client'));
 }));

@@ -84,8 +84,12 @@ export function buildApi(db) {
     if (has(actor, 'partner')) for (const p of db.prepare(`SELECT p.*, u.name emp, c.name cycle, c.calibration_due due FROM plans p JOIN users u ON u.id = p.user_id JOIN cycles c ON c.id = p.cycle_id
         WHERE p.tenant_id = ? AND p.partner_id = ? AND p.state = 'partner_calibration'`).all(actor.tenantId, actor.id)) items.push({ type: 'calibration', kind: 'Calibrate', title: `${p.emp} — ${p.cycle}`, due: p.due, link: `#/review/${p.id}`, state: 'Partner calibration' });
     for (const x of db.prepare("SELECT * FROM leave_requests WHERE tenant_id = ? AND state = 'submitted' AND (approver_id = ? OR backup_approver_id = ?) AND user_id != ?").all(actor.tenantId, actor.id, actor.id, actor.id)) {
+      // the backup sees a request only when the approver is away or it has waited too long
+      const asBackup = x.approver_id !== actor.id;
+      const why = asBackup ? leave.waitingForBackup(db, actor.tenantId, x) : null;
+      if (asBackup && !why) continue;
       const v = leave.requestView(db, actor, x);
-      items.push({ type: 'request', kind: v.type.category === 'offsite' ? 'Off-site request' : 'Time-off request', title: `${v.user.name} — ${v.type.name} ${v.start_date}${v.end_date !== v.start_date ? ' → ' + v.end_date : ''} (${v.chargeable} d)`, due: v.start_date, link: `#/request/${x.id}`, state: 'Waiting for you', warnings: v.warnings.length });
+      items.push({ type: 'request', kind: v.type.category === 'offsite' ? 'Off-site request' : 'Time-off request', title: `${v.user.name} — ${v.type.name} ${v.start_date}${v.end_date !== v.start_date ? ' → ' + v.end_date : ''} (${v.chargeable} d)`, due: v.start_date, link: `#/request/${x.id}`, state: asBackup ? `As backup · ${why}` : 'Waiting for you', warnings: v.warnings.length });
     }
     for (const f of db.prepare(`SELECT fi.plan_id, u.name emp, pr.name project FROM feedback_invites fi JOIN plans p ON p.id = fi.plan_id JOIN users u ON u.id = p.user_id
         JOIN project_assignments pa ON pa.id = fi.assignment_id JOIN projects pr ON pr.id = pa.project_id WHERE fi.invitee_id = ? AND p.state IN ('manager_review','self_assessment')
@@ -93,6 +97,18 @@ export function buildApi(db) {
       items.push({ type: 'feedback', kind: 'Project feedback', title: `${f.emp} on ${f.project}`, link: `#/review/${f.plan_id}`, state: 'Invited' });
     for (const c of db.prepare(`SELECT c.*, d.title FROM contributions c JOIN deliverables d ON d.id = c.deliverable_id JOIN projects p ON p.id = d.project_id WHERE p.lead_user_id = ? AND c.status = 'claimed' AND c.user_id != ?`).all(actor.id, actor.id))
       items.push({ type: 'contribution', kind: 'Confirm contribution', title: `${c.title} — ${c.responsibility}`, link: '#/projects', state: 'Claimed' });
+    // project leads confirm who worked on their projects; partners approve new register entries
+    for (const g of db.prepare(`SELECT p.id, p.name, COUNT(*) n FROM project_assignments a JOIN projects p ON p.id = a.project_id
+        WHERE p.tenant_id = ? AND p.lead_user_id = ? AND a.status IN ('provisional','tentative') AND a.user_id != ? GROUP BY p.id`).all(actor.tenantId, actor.id, actor.id))
+      items.push({ type: 'assignment', kind: 'Confirm team', title: `${g.name} (${g.n} ${g.n === 1 ? 'person' : 'people'})`, link: `#/projects?p=${g.id}`, state: 'Lead to confirm' });
+    if (has(actor, 'partner') || isOps(actor)) {
+      // a lead cannot confirm their own work: partners / People Ops do
+      for (const a of db.prepare(`SELECT p.id, p.name, u.name person FROM project_assignments a JOIN projects p ON p.id = a.project_id JOIN users u ON u.id = a.user_id
+          WHERE p.tenant_id = ? AND a.user_id = p.lead_user_id AND a.user_id != ? AND a.status IN ('provisional','tentative') ORDER BY p.name`).all(actor.tenantId, actor.id))
+        items.push({ type: 'assignment', kind: 'Confirm lead’s work', title: `${a.person} on ${a.name}`, link: `#/projects?p=${a.id}`, state: 'Partner to confirm' });
+      const n = db.prepare("SELECT COUNT(*) n FROM projects WHERE tenant_id = ? AND register_status = 'candidate'").get(actor.tenantId).n;
+      if (n) items.push({ type: 'assignment', kind: 'Approve projects', title: `${n} new project${n === 1 ? '' : 's'} in the register`, link: '#/projects?status=candidate', state: 'Awaiting approval' });
+    }
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
     return { items };
@@ -128,6 +144,7 @@ export function buildApi(db) {
   r.post('/api/plans/:id/feedback', ({ actor, params, body }) => ({ id: perf.addProjectFeedback(db, actor, params.id, body) }));
   r.post('/api/plans/:id/category-reviewers', ({ actor, params, body }) => ({ ok: perf.setCategoryReviewer(db, actor, params.id, body) }));
   r.post('/api/plans/:id/input-invites', ({ actor, params, body }) => ({ ok: perf.inviteInput(db, actor, params.id, body) }));
+  r.post('/api/plans/:id/input-invites/remove', ({ actor, params, body }) => ({ removed: perf.removeInputInvite(db, actor, params.id, body || {}) }));
   r.post('/api/plans/:id/inputs', ({ actor, params, body }) => ({ id: perf.addInput(db, actor, params.id, body) }));
   r.post('/api/plans/:id/reviewer-note', ({ actor, params, body }) => perf.decideReviewerNote(db, actor, params.id, body || {}));
   r.post('/api/plans/:id/actions', ({ actor, params, body }) => ({ id: perf.addDevelopmentAction(db, actor, params.id, body) }));
@@ -293,8 +310,10 @@ export function buildApi(db) {
   // ------------------------------------------------------------- projects --
   r.get('/api/projects', ({ actor }) => proj.registerView(db, actor));
   r.post('/api/projects', ({ actor, body }) => ({ id: proj.createProject(db, actor, body) }));
+  r.post('/api/projects/:id/lead', ({ actor, params, body }) => proj.setProjectLead(db, actor, params.id, body.userId));
   r.post('/api/projects/:id/approve', ({ actor, params }) => { proj.approveProject(db, actor, params.id); return { ok: true }; });
   r.post('/api/projects/:id/assignments', ({ actor, params, body }) => ({ id: proj.addAssignment(db, actor, { ...body, projectId: params.id }) }));
+  r.post('/api/assignment-removals/:id/restore', ({ actor, params }) => proj.restoreAssignment(db, actor, params.id));
   r.post('/api/assignments/:id/review', ({ actor, params, body }) => proj.confirmAssignment(db, actor, params.id, body));
   r.post('/api/projects/:id/deliverables', ({ actor, params, body }) => ({ id: proj.addDeliverable(db, actor, { ...body, projectId: params.id }) }));
   r.post('/api/deliverables/:id/contributions', ({ actor, params, body }) => ({ id: proj.claimContribution(db, actor, { ...body, deliverableId: params.id }) }));

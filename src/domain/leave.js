@@ -24,7 +24,8 @@ export const CANDIDATE_POLICY = {
   hoursPerDay: 8,
   leaveNoticeDays: 14, // handbook: 14 days' advance notice for leave
   noticeAppliesTo: ['AV'],
-  carryover: { maxDays: 10, expiresOn: '09-30' }, // up to 10 days, expiring in September
+  annualEntitlementDays: 14, // GB decided 24 Nov 2026: 14 days a year for everyone, new joiners included
+  carryover: { maxDays: null, expiresOn: null }, // GB decided 24 Nov 2026: all unused days carry into the next year (no cap set, no expiry set)
   offsite: { monthlyQuota: 4, requiresPostProbation: true, noticeDays: 1 },
   projectCoverageCheck: true,
   allowNegative: ['COO'], // vendor shows negative COO availability for 2 people — CONFIRM
@@ -96,10 +97,24 @@ export function previewRequest(db, actor, input) { return evaluate(db, actor, in
 
 const settingOf = (db, tenantId, key) => { const r = db.prepare('SELECT value_json FROM settings WHERE tenant_id = ? AND key = ?').get(tenantId, key); return r ? P(r.value_json, null) : null; };
 
+/** Is this person away (approved, non off-site leave) on the given day? */
+export function isAway(db, tenantId, userId, day = todayIn()) {
+  return !!db.prepare(`SELECT 1 FROM leave_requests r JOIN leave_types t ON t.id = r.type_id WHERE r.tenant_id = ? AND r.user_id = ? AND r.state = 'approved'
+      AND t.category NOT IN ('offsite','client') AND r.start_date <= ? AND r.end_date >= ?`).get(tenantId, userId, day, day);
+}
+/** Backup approver sees a request once the approver is away or it has waited this many days (default 2). */
+export const escalateDays = (db, tenantId) => Number(settingOf(db, tenantId, 'leave_escalate_days') ?? 2);
+export function waitingForBackup(db, tenantId, r, day = todayIn()) {
+  if (isAway(db, tenantId, r.approver_id, day)) return 'approver away';
+  const waited = Math.floor((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${r.created_at.slice(0, 10)}T00:00:00Z`)) / 864e5);
+  return waited >= escalateDays(db, tenantId) ? `waiting ${waited} days` : null;
+}
+
 /** LeaveBoard → Prism switch-over: requests open only once opening balances are posted at the cutover date. */
 export function leaveStatus(db, tenantId) {
   const cutover = settingOf(db, tenantId, 'leave_cutover');
-  const live = !cutover || !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' LIMIT 1").get(tenantId);
+  // live only once opening balances were posted AT the cutover date (not any older test posting)
+  const live = !cutover || !!db.prepare("SELECT 1 FROM leave_ledger WHERE tenant_id = ? AND kind = 'opening' AND effective_date = ? LIMIT 1").get(tenantId, cutover);
   const approverId = settingOf(db, tenantId, 'leave_approver');
   const approver = approverId ? db.prepare('SELECT name FROM users WHERE id = ?').get(approverId)?.name ?? null : null;
   return { cutover, live, approver };
@@ -307,6 +322,27 @@ export function adjustBalance(db, actor, { userId, typeCode, year, amountX100, n
   });
 }
 
+/** Annual entitlement for a year, per person (GB decision E). Idempotent per user/type/year. */
+export function grantEntitlements(db, actor, { year, typeCode = 'AV', rows, note }) {
+  if (!isOps(actor)) throw forbid();
+  if (!Number.isInteger(year)) throw bad('Year required');
+  return tx(db, () => {
+    const t = db.prepare('SELECT * FROM leave_types WHERE tenant_id = ? AND code = ?').get(actor.tenantId, typeCode);
+    if (!t) throw bad('Unknown type');
+    const out = [];
+    for (const r of rows) {
+      const u = db.prepare('SELECT id, name FROM users WHERE id = ? AND tenant_id = ? AND active = 1').get(r.userId, actor.tenantId);
+      if (!u) throw bad(`Unknown person ${r.userId}`);
+      const amt = Math.round(Number(r.days) * 100);
+      if (!(amt > 0)) throw bad(`${u.name}: entitlement must be more than 0 days`);
+      const made = ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year, kind: 'grant', amount: amt, date: `${year}-01-01`, actorId: actor.id, note: note || `${year} entitlement`, key: `grant:${u.id}:${t.id}:${year}` });
+      out.push({ userId: u.id, name: u.name, days_x100: amt, created: made });
+    }
+    audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'balance.grant', entity: 'leave_type', entityId: t.id, reason: note, after: { year, people: out.length, created: out.filter((x) => x.created).length } });
+    return out;
+  });
+}
+
 /** Carry unused AV into next year (capped) — idempotent per user/type/year. */
 export function runCarryover(db, actor, { fromYear, typeCode = 'AV' }) {
   if (!isOps(actor)) throw forbid();
@@ -317,7 +353,8 @@ export function runCarryover(db, actor, { fromYear, typeCode = 'AV' }) {
     const out = [];
     for (const u of users) {
       const b = balance(db, actor.tenantId, u.id, t.id, fromYear);
-      const carry = Math.max(0, Math.min(b.posted_x100, pol.carryover.maxDays * 100));
+      const cap = pol.carryover?.maxDays; // null = no cap
+      const carry = Math.max(0, cap == null ? b.posted_x100 : Math.min(b.posted_x100, cap * 100));
       if (!carry) continue;
       const made = ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year: fromYear + 1, kind: 'carryover', amount: carry, date: `${fromYear + 1}-01-01`, actorId: actor.id, note: `Carried from ${fromYear}`, key: `carry:${u.id}:${t.id}:${fromYear + 1}` });
       if (made) ledger(db, { tenantId: actor.tenantId, userId: u.id, typeId: t.id, year: fromYear, kind: 'adjustment', amount: -carry, date: `${fromYear}-12-31`, actorId: actor.id, note: `Carried to ${fromYear + 1}`, key: `carryout:${u.id}:${t.id}:${fromYear}` });
@@ -333,6 +370,7 @@ export function runCarryoverExpiry(db, actor, { year, typeCode = 'AV', asOf }) {
   return tx(db, () => {
     const t = db.prepare('SELECT * FROM leave_types WHERE tenant_id = ? AND code = ?').get(actor.tenantId, typeCode);
     const pol = activePolicy(db, actor.tenantId, `${year}-01-01`).settings;
+    if (!pol.carryover?.expiresOn) return { expiry: null, expired: [] }; // no expiry set
     const expiry = `${year}-${pol.carryover.expiresOn}`;
     if ((asOf || todayIn()) <= expiry) return { expiry, expired: [] };
     const rows = db.prepare(`SELECT user_id, SUM(CASE WHEN kind='carryover' THEN amount_x100 ELSE 0 END) carry,
@@ -371,6 +409,6 @@ export function teamCalendar(db, actor, { from, to }) {
       JOIN users u ON u.id = r.user_id JOIN leave_types t ON t.id = r.type_id
       WHERE r.tenant_id = ? AND r.state IN ('approved','submitted') AND r.start_date <= ? AND r.end_date >= ? AND r.user_id IN (${ids.map(() => '?').join(',')})`)
     .all(actor.tenantId, to, from, ...ids);
-  return rows.map((r) => ({ name: r.name, start_date: r.start_date, end_date: r.end_date, availability: r.category === 'offsite' ? 'Working off-site' : 'Away',
+  return rows.map((r) => ({ name: r.name, start_date: r.start_date, end_date: r.end_date, availability: r.category === 'offsite' ? 'Working off-site' : r.category === 'client' ? 'At client' : 'Away',
     tentative: r.state === 'submitted', half: r.start_portion !== 'full' || r.end_portion !== 'full' }));
 }

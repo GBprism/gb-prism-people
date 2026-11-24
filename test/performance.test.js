@@ -214,3 +214,15 @@ test('split review: section reviewers rate only their sections, invited seniors 
   assert.equal(perf.planView(db, as(SYN.partner), PLAN).scores.manager.rounded, 3.8);
   assert.equal(planAccess(db, as(SYN.peer), perf.getPlan(db, PLAN)), null);
 });
+
+test('input requests: lead reviewer can withdraw an unanswered one; answered input stays', () => {
+  const { db, as } = fresh();
+  const mgr = as(SYN.manager);
+  perf.inviteInput(db, mgr, PLAN, { inviteeId: SYN.senior, label: 'Project feedback' });
+  perf.inviteInput(db, mgr, PLAN, { inviteeId: SYN.am, label: 'Assistant Manager review' });
+  assert.throws(() => perf.removeInputInvite(db, as(SYN.peer), PLAN, { inviteeId: SYN.senior }), /Not permitted/);
+  assert.equal(perf.removeInputInvite(db, mgr, PLAN, { inviteeId: SYN.senior, reason: 'did not work together' }), true);
+  perf.addInput(db, as(SYN.am), PLAN, { body: 'Solid analysis on Alpha' });
+  assert.throws(() => perf.removeInputInvite(db, mgr, PLAN, { inviteeId: SYN.am }), /already given/);
+  assert.deepEqual(perf.planView(db, mgr, PLAN).input_invites.map((i) => i.name), ['Adam Assistant']);
+});
