@@ -3,7 +3,7 @@ import { h, icon, badge, card, emptyState, dataTable, filterChips } from '/ui.js
 
 const KIND = { review: ['Reviews', 'clipboard-check'], request: ['Time off', 'calendar-days'], feedback: ['Feedback', 'messages-square'], calibration: ['Calibration', 'scale'],
   contribution: ['Projects', 'folder-kanban'], assignment: ['Projects', 'folder-kanban'], clarification: ['Questions', 'circle-help'],
-  expense: ['Expenses', 'receipt'], timesheet: ['Timesheets', 'timer'], letter: ['Letters', 'mail-check'], cv: ['CVs', 'id-card'], policy: ['Policies', 'book-open-check'] };
+  expense: ['Expenses', 'receipt'], timesheet: ['Timesheets', 'timer'], letter: ['Letters', 'mail-check'], cv: ['CVs', 'id-card'], policy: ['Policies', 'book-open-check'], document: ['Company documents', 'file-check-2'] };
 const fmt = (s) => (s ? new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null);
 
 export async function inboxScreen({ api }) {

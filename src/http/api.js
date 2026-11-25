@@ -14,6 +14,7 @@ import * as exp from '../domain/expenses.js';
 import * as ts from '../domain/timesheets.js';
 import * as wp from '../domain/workplace.js';
 import { cvDeck } from '../domain/cv.js';
+import * as office from '../domain/office.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances, reconcile, compareSnapshots } from '../imports/leaveboard.js';
 import { previewPlans, applyPlans, previewHistory, applyHistory } from '../imports/pms.js';
 import { previewGbForms, applyGbForms } from '../imports/gbform.js';
@@ -33,7 +34,7 @@ export function buildApi(db) {
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title,
-      nav: { inbox: true, calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+      nav: { inbox: true, office: office.canOffice(db, actor), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // directory (names only) for pickers such as "who covers your work"
@@ -127,6 +128,8 @@ export function buildApi(db) {
       const cv = db.prepare("SELECT COUNT(*) n FROM cv_updates WHERE tenant_id = ? AND status = 'pending'").get(actor.tenantId).n;
       if (cv) items.push({ type: 'cv', kind: 'CV updates', title: `${cv} CV update${cv === 1 ? '' : 's'} to review`, link: '#/company', state: 'Pending' });
     }
+    for (const d of office.expiringDocuments(db, actor))
+      items.push({ type: 'document', kind: d.status === 'expired' ? 'Expired document' : 'Renew soon', title: `${d.title}${d.number ? ` (${d.number})` : ''}`, due: d.expires_on, link: '#/documents', state: d.status === 'expired' ? 'Expired' : 'Expiring' });
     const unread = db.prepare('SELECT COUNT(*) n FROM policies p LEFT JOIN policy_acks a ON a.policy_id = p.id AND a.user_id = ? WHERE p.tenant_id = ? AND p.requires_ack = 1 AND (a.acked_at IS NULL OR COALESCE(a.version, \'\') != COALESCE(p.version, \'\'))').get(actor.id, actor.tenantId).n;
     if (unread) items.push({ type: 'policy', kind: 'Policies', title: `${unread} polic${unread === 1 ? 'y' : 'ies'} to read and acknowledge`, link: '#/policies', state: 'To acknowledge' });
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
@@ -385,6 +388,21 @@ export function buildApi(db) {
   r.post('/api/cv-updates', ({ actor, body }) => wp.proposeCvUpdate(db, actor, body.fields || {}));
   r.post('/api/cv-updates/:id/decide', ({ actor, params, body }) => wp.decideCvUpdate(db, actor, params.id, body));
   r.post('/api/projects/:id/links', ({ actor, params, body }) => proj.setProjectLinks(db, actor, params.id, body));
+  // ------------------------------------------- office costs and company documents --
+  r.get('/api/office', ({ actor, ctx }) => office.officeView(db, actor, { month: ctx.url.searchParams.get('month') }));
+  r.post('/api/office/admins', ({ actor, body }) => office.setOfficeAdmins(db, actor, body.userIds || []));
+  r.post('/api/office/expenses', ({ actor, body }) => office.saveOfficeExpense(db, actor, null, body));
+  r.patch('/api/office/expenses/:id', ({ actor, params, body }) => office.saveOfficeExpense(db, actor, params.id, body));
+  r.post('/api/office/expenses/:id/delete', ({ actor, params }) => office.deleteOfficeExpense(db, actor, params.id));
+  r.post('/api/office/expenses/:id/receipt', ({ actor, params, raw, ctx }) => office.attachOfficeReceipt(db, actor, params.id, raw, ctx.url.searchParams.get('name')), { raw: true });
+  r.get('/api/office/expenses/:id/receipt', ({ actor, params }) => office.officeReceipt(db, actor, params.id));
+  r.get('/api/office/csv/:year', ({ actor, params }) => office.officeCsv(db, actor, params.year));
+  r.get('/api/documents', ({ actor }) => office.documentsView(db, actor));
+  r.post('/api/documents', ({ actor, body }) => office.saveDocument(db, actor, null, body));
+  r.patch('/api/documents/:id', ({ actor, params, body }) => office.saveDocument(db, actor, params.id, body));
+  r.post('/api/documents/:id/archive', ({ actor, params }) => office.archiveDocument(db, actor, params.id));
+  r.post('/api/documents/:id/file', ({ actor, params, raw, ctx }) => office.attachDocumentFile(db, actor, params.id, raw, ctx.url.searchParams.get('name')), { raw: true });
+  r.get('/api/documents/:id/file', ({ actor, params }) => office.documentFile(db, actor, params.id));
   r.post('/api/plan-items/:id/strategy', ({ actor, params, body }) => lib.linkPlanItem(db, actor, params.id, body.kpiIds || []));
   r.post('/api/projects/:id/lead', ({ actor, params, body }) => proj.setProjectLead(db, actor, params.id, body.userId));
   r.post('/api/projects/:id/approve', ({ actor, params }) => { proj.approveProject(db, actor, params.id); return { ok: true }; });

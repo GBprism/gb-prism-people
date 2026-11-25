@@ -129,3 +129,29 @@ test('job title rename and CV slide export', async () => {
   assert.equal(d.buffer.subarray(0, 2).toString(), 'PK', 'a .pptx (zip) file');
   assert.match(d.filename, /^CV_.+\.pptx$/);
 });
+
+test('office expenses and company documents: only the office administrator, People Ops and partners', async () => {
+  const { db, as } = fresh();
+  const off = await import('../src/domain/office.js');
+  assert.throws(() => off.officeView(db, as(SYN.emp)), /Not permitted/);
+  assert.throws(() => off.setOfficeAdmins(db, as(SYN.emp), [SYN.emp]), /Not permitted/);
+  off.setOfficeAdmins(db, as(SYN.partner), [SYN.emp]);
+  const me = as(SYN.emp);
+  const { id } = off.saveOfficeExpense(db, me, null, { spent_on: '2026-10-05', category: 'Electricity', vendor: 'JEPCO', amount: '84.35', paid_by: 'company' });
+  off.saveOfficeExpense(db, me, null, { spent_on: '2026-10-01', category: 'Rent', amount: '1200' });
+  assert.throws(() => off.saveOfficeExpense(db, me, null, { spent_on: '2026-10-01', category: 'Yacht', amount: '1' }), /category/);
+  off.attachOfficeReceipt(db, me, id, Buffer.from('%PDF-1.4\n'), 'bill.pdf');
+  const v = off.officeView(db, me, { month: '2026-10' });
+  assert.equal(v.total_x100, 128435);
+  assert.equal(v.byCategory[0].category, 'Rent');
+  assert.match(off.officeCsv(db, me, '2026').__raw.toString(), /Electricity.*84\.35/);
+  assert.throws(() => off.officeView(db, as(SYN.peer)), /Not permitted/);
+  // documents: expiry status and inbox reminders
+  const soon = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
+  off.saveDocument(db, me, null, { kind: 'Professional / trade licence', title: 'Professional licence', number: 'PL-1', issued_on: '2026-01-01', expires_on: soon });
+  off.saveDocument(db, me, null, { kind: 'Commercial registration', title: 'Commercial registration', expires_on: '2020-01-01' });
+  assert.throws(() => off.saveDocument(db, me, null, { kind: 'Commercial registration', issued_on: '2026-05-01', expires_on: '2026-01-01' }), /before the issue/);
+  assert.deepEqual(off.expiringDocuments(db, me).map((d) => d.status).sort(), ['expired', 'expiring']);
+  assert.deepEqual(off.expiringDocuments(db, as(SYN.peer)), []);
+  assert.throws(() => off.documentsView(db, as(SYN.manager)), /Not permitted/);
+});

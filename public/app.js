@@ -20,6 +20,7 @@ import { companyScreen } from '/screens/company.js';
 import { policiesScreen } from '/screens/policies.js';
 import { onboardingScreen } from '/screens/onboarding.js';
 import { checklistsScreen } from '/screens/checklists.js';
+import { officeScreen, documentsScreen } from '/screens/office.js';
 import { aiExamplesScreen, adminDashboardScreen, adminRosterScreen, adminPolicyScreen, adminRemindersScreen, adminAiScreen, adminAuditScreen } from '/screens/admin.js';
 
 // ------------------------------------------------------------- helpers --
@@ -55,7 +56,8 @@ const routes = [
   [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
   [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
-  [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
+  [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })],
+  [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {

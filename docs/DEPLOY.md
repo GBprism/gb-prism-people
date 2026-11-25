@@ -126,6 +126,10 @@ The private bundle also carries `title-renames.json` (job-title decisions, e.g. 
 - **Letters**: People Ops prints from the template on letterhead (browser print / save as PDF). Pay fields are typed at print time and never saved.
 - **CV slides** are generated as .pptx in GB's layout (`/api/cv/<id>` or `/api/cv/all`). Set `CV_ASSET_DIR` only if the icons live somewhere other than `config/private/real/cv-template/media`.
 
+## Office expenses and company documents
+
+`office.json` names who keeps them (GB decision: Abdullah Abu-Alhija). It is applied only while nobody has been chosen in the portal; after that, partners change it on the Office expenses page. Office administrators, People Ops and partners see both pages; nobody else does. Documents expiring within 60 days, or expired, appear in their inbox. Receipts and scans are stored in the database (PDF or photo).
+
 ## Leave approver and LeaveBoard cutover (GB decisions)
 
 ```bash

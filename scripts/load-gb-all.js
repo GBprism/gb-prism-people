@@ -23,7 +23,8 @@ import { loadActor } from '../src/domain/authz.js';
 import { previewGbForms, applyGbForms } from '../src/imports/gbform.js';
 import { previewHistoryRows, applyHistory } from '../src/imports/pms.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances } from '../src/imports/leaveboard.js';
-import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides, applyPhotos, applyServiceLines, applyTitleRenames } from '../src/imports/gbworkbook.js';
+import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides, applyPhotos, applyServiceLines, applyTitleRenames, nameMatcher } from '../src/imports/gbworkbook.js';
+import { officeAdmins, setOfficeAdmins } from '../src/domain/office.js';
 import { sha256 } from '../src/imports/xlsx.js';
 import { SERVICE_LINES } from '../src/domain/projects.js';
 import { applyLibrary } from '../src/domain/library.js';
@@ -132,6 +133,17 @@ if (has('library.json')) {
     const brand = (pb?.brand_files || []).filter((b) => has(b.file)).map((b, i) => ({ label: `GB Advisory logo ${i + 1}`, variant: b.variant, orientation: b.orientation, filename: path.basename(b.file), buffer: fs.readFileSync(path.join(dir, b.file)) }));
     const r = applyWorkplace(db, actor, { letters: ol?.letters || [], onboarding: ol?.onboarding || [], checklists: cl || undefined, policies: (pb?.ai_policies || []).map((p) => ({ ...p, category: 'AI' })), brand });
     log('Workplace content', `${r.letters} letter templates, ${r.checklists} checklists, ${r.policies} policies, ${r.onboarding} onboarding steps, ${r.brand} brand files`);
+  }
+}
+// 9. who keeps the office expenses and company documents (only until someone is chosen in the portal)
+if (has('office.json')) {
+  const want = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')).office_admins || [];
+  if (officeAdmins(db, actor.tenantId).length) log('Office administrators', 'already chosen in the portal — left as is');
+  else {
+    const match = nameMatcher(db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId).map((u) => ({ ...u, aliases: [] })));
+    const ids = want.map((n) => match(n)?.id).filter(Boolean);
+    setOfficeAdmins(db, actor, ids);
+    log('Office administrators', want.map((n) => `${n}: ${match(n) ? 'assigned' : 'not on the roster'}`));
   }
 }
 

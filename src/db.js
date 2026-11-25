@@ -406,6 +406,17 @@ export const MIGRATIONS = [
    ALTER TABLE projects ADD COLUMN meet_url TEXT;
    CREATE INDEX timesheet_user_month ON timesheet_entries(user_id, month);
    CREATE INDEX expense_lines_claim ON expense_lines(claim_id);`,
+  // ---- 017 office running costs and company documents (licences and other government papers) ------
+  `CREATE TABLE office_expenses (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, spent_on TEXT NOT NULL, month TEXT NOT NULL, category TEXT NOT NULL,
+     vendor TEXT, description TEXT, amount_x100 INTEGER NOT NULL CHECK (amount_x100 > 0), currency TEXT NOT NULL DEFAULT 'JOD',
+     paid_by TEXT NOT NULL DEFAULT 'company', receipt_file_id TEXT REFERENCES files(id), entered_by TEXT NOT NULL REFERENCES users(id),
+     created_at TEXT NOT NULL, updated_at TEXT);
+   CREATE INDEX office_expenses_month ON office_expenses(tenant_id, month);
+   CREATE TABLE company_documents (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, number TEXT, issuer TEXT,
+     issued_on TEXT, expires_on TEXT, renewal_owner_id TEXT REFERENCES users(id), notes TEXT, file_id TEXT REFERENCES files(id),
+     drive_url TEXT, archived INTEGER NOT NULL DEFAULT 0, updated_by TEXT, updated_at TEXT NOT NULL);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {
