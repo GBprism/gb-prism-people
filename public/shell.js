@@ -69,7 +69,9 @@ export function mountShell({ me, api, onSignOut }) {
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/profile' }, icon('id-card'), 'My profile'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/history' }, icon('clipboard-check'), 'My reviews'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/timeoff' }, icon('calendar-days'), 'My time off'),
+    me.can_view_as ? h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: () => viewAs(me.view_as ? null : 'employee') }, icon(me.view_as ? 'rotate-ccw' : 'eye'), me.view_as ? 'Back to my own access' : 'See the portal as an employee') : null,
     h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: onSignOut }, icon('log-out', { flip: true }), 'Sign out'));
+  async function viewAs(mode) { await api('/api/view-as', { method: 'POST', body: { mode } }); location.hash = '#/'; location.reload(); }
   const avatarBtn = h('button', { class: 'avatar-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `Account: ${me.name}`, onclick: (e) => { e.stopPropagation(); toggleMenu(); } }, avatar(me));
   const toggleMenu = (force) => { const open = force ?? userMenu.hidden; userMenu.hidden = !open; avatarBtn.setAttribute('aria-expanded', String(open)); if (open) userMenu.querySelector('a,button')?.focus(); };
   document.addEventListener('click', (e) => { if (!userMenu.hidden && !userMenu.contains(e.target)) toggleMenu(false); });
@@ -87,7 +89,9 @@ export function mountShell({ me, api, onSignOut }) {
   const banner = h('div', { id: 'banner', role: 'status', 'aria-live': 'polite' });
   const main = h('main', { id: 'main', tabindex: '-1' });
   const scrim = h('div', { class: 'nav-scrim', onclick: () => shell.classList.remove('nav-open') });
-  const shell = h('div', { class: `app-shell${collapsed ? ' collapsed' : ''}` }, sidebar, h('div', { class: 'shell-main' }, topbar, main), scrim);
+  const shell = h('div', { class: `app-shell${collapsed ? ' collapsed' : ''}` }, sidebar, h('div', { class: 'shell-main' }, topbar,
+    me.view_as ? h('div', { class: 'view-as-bar', role: 'status' }, icon('eye'), h('span', {}, 'You are seeing the portal as an employee. Partner and admin pages are hidden. Things assigned to you by name (your reviews, leave approvals) still show.'),
+      button('Back to my own access', { size: 'sm', iconName: 'rotate-ccw', onClick: () => viewAs(null) })) : null, main), scrim);
   document.body.replaceChildren(h('a', { class: 'skip', href: '#main' }, 'Skip to content'), shell);
 
   function toggleCollapse() {

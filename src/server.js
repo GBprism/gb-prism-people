@@ -50,6 +50,19 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
       const userId = authMode === 'trusted-header' ? fromGateway(db, req) : readSession(req); // 'google' and 'dev' both use the signed session cookie
       const actor = userId && loadActor(db, userId);
       if (!actor) throw new AppError(401, 'unauthenticated', 'Please sign in');
+      // "See the portal as an employee": the person's extra roles are switched off for their own session.
+      // It can only remove rights, never add them, so the cookie needs no signature.
+      if (url.pathname === '/api/view-as' && req.method === 'POST') {
+        const { mode } = JSON.parse((await readBody(req, 1e4)).toString() || '{}');
+        const on = mode === 'employee' && [...actor.roles].some((r) => r !== 'employee');
+        const secure = req.headers['x-forwarded-proto'] === 'https' || String(process.env.BASE_URL || '').startsWith('https') ? '; Secure' : '';
+        return send(res, 200, { ok: true, view_as: on ? 'employee' : null }, { 'Set-Cookie': `prism_view=${on ? 'employee' : ''}; Path=/; HttpOnly; SameSite=Lax${on ? '' : '; Max-Age=0'}${secure}` });
+      }
+      if (/(?:^|;\s*)prism_view=employee(?:;|$)/.test(req.headers.cookie || '')) {
+        actor.realRoles = [...actor.roles];
+        actor.roles = new Set(['employee']);
+        actor.viewAs = 'employee';
+      }
 
       const route = api.match(req.method, url.pathname);
       if (!route) throw new AppError(404, 'not_found', 'No such endpoint');

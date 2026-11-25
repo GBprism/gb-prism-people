@@ -33,7 +33,7 @@ export function buildApi(db) {
     const reviews = db.prepare('SELECT COUNT(*) n FROM plans WHERE reviewer_id = ?').get(actor.id).n;
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
-    return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title,
+    return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
       nav: { inbox: true, office: office.canOffice(db, actor), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
