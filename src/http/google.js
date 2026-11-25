@@ -92,7 +92,9 @@ async function slides(cfg, db, req, res, st, at, fail, fetchImpl) {
   const { readSession } = await import('./router.js');
   const { loadActor } = await import('../domain/authz.js');
   const { cvDeck } = await import('../domain/cv.js');
-  if (readSession(req) !== st.userId) return fail(403, 'Please sign in to People & Performance again, then retry.');
+  // Google's redirect back is a cross-site navigation, so the (SameSite=Strict) session cookie is not sent.
+  // The signed, 10-minute state cookie was issued only to this signed-in person, so it identifies them.
+  const sid = readSession(req); if (sid && sid !== st.userId) return fail(403, 'You are signed in as someone else. Please retry.');
   const actor = loadActor(db, st.userId); if (!actor) return fail(403, 'Your account is not active.');
   try {
     const d = await cvDeck(db, actor, st.target === 'all' ? null : st.target);

@@ -44,6 +44,8 @@ async function api(path, { method = 'GET', body, raw } = {}) {
   const res = await fetch(path, { method, headers: { 'X-Requested-With': 'prism', ...(raw ? { 'Content-Type': 'application/octet-stream' } : body ? { 'Content-Type': 'application/json' } : {}) }, body: raw || (body ? JSON.stringify(body) : undefined), credentials: 'same-origin' });
   const ct = res.headers.get('content-type') || '';
   const data = ct.includes('json') ? await res.json() : await res.text();
+  // signed out (session ended after 12 hours, or signed out in another tab): back to the sign-in page
+  if (res.status === 401 && ME && !path.startsWith('/api/me')) { ME = null; location.hash = '#/'; location.reload(); return new Promise(() => {}); }
   if (!res.ok) { const e = new Error(data.message || res.statusText); e.status = res.status; e.details = data.details; throw e; }
   return data;
 }
