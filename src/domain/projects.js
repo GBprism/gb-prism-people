@@ -37,6 +37,29 @@ export function setProjectLead(db, actor, projectId, leadUserId) {
   return { ok: true };
 }
 
+/** GB's five service lines (company profile, Jan 2026). */
+export const SERVICE_LINES = ['Strategic Planning and Growth', 'Business Process Re-engineering', 'HR Transformation', 'Operating Model and Governance', 'AI Readiness and Strategy'];
+export function setServiceLine(db, actor, projectId, line) {
+  if (!isOps(actor) && !has(actor, 'partner') && !isLead(db, actor, projectId)) throw forbid();
+  assertTenantProject(db, actor, projectId);
+  if (line && !SERVICE_LINES.includes(line)) throw bad('Unknown service line');
+  db.prepare('UPDATE projects SET service_line = ? WHERE id = ?').run(line || null, projectId);
+  audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'project.service_line', entity: 'project', entityId: projectId, after: { line } });
+  return { ok: true };
+}
+
+/** Google Chat space and Google Meet link for a project (lead, partners, People Ops). */
+export function setProjectLinks(db, actor, projectId, { chatUrl, meetUrl } = {}) {
+  assertTenantProject(db, actor, projectId);
+  if (!isOps(actor) && !has(actor, 'partner') && !isLead(db, actor, projectId)) throw forbid();
+  const ok = (u, re, what) => { const s = String(u || '').trim(); if (s && !re.test(s)) throw bad(`Use a ${what} link`); return s || null; };
+  const chat = ok(chatUrl, /^https:\/\/(chat\.google\.com|mail\.google\.com\/chat)\//, 'Google Chat (https://chat.google.com/…)');
+  const meet = ok(meetUrl, /^https:\/\/meet\.google\.com\/[a-z0-9-]+$/, 'Google Meet (https://meet.google.com/abc-defg-hij)');
+  db.prepare('UPDATE projects SET chat_url = ?, meet_url = ? WHERE id = ?').run(chat, meet, projectId);
+  audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'project.links', entity: 'project', entityId: projectId, after: { chat: !!chat, meet: !!meet } });
+  return { ok: true };
+}
+
 export function addAssignment(db, actor, { projectId, userId, role, status = 'provisional', startDate, endDate, source }) {
   assertTenantProject(db, actor, projectId); assertTenantUsers(db, actor, userId);
   if (!isOps(actor) && !isLead(db, actor, projectId)) throw forbid();
@@ -95,8 +118,10 @@ export function restoreAssignment(db, actor, removalId) {
 
 export function addDeliverable(db, actor, { projectId, title, workstream, version, milestone, dueDate, driveUrl, qaReviewerId }) {
   assertTenantProject(db, actor, projectId); assertTenantUsers(db, actor, qaReviewerId);
-  if (!isOps(actor) && !isLead(db, actor, projectId)) throw forbid();
+  const onTeam = db.prepare("SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ? AND status IN ('confirmed','tentative','historical','provisional')").get(projectId, actor.id);
+  if (!isOps(actor) && !isLead(db, actor, projectId) && !onTeam) throw forbid();
   if (!title) throw bad('Title required');
+  if (driveUrl && !/^https:\/\/(drive|docs)\.google\.com\//.test(driveUrl)) throw bad('Use the Google Drive link of the deliverable');
   const id = uid('dlv_');
   db.prepare(`INSERT INTO deliverables (id, tenant_id, project_id, workstream, title, version, milestone, due_date, drive_url, qa_reviewer_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
     .run(id, actor.tenantId, projectId, workstream ?? null, title, version ?? null, milestone ?? null, dueDate ?? null, driveUrl ?? null, qaReviewerId ?? null);

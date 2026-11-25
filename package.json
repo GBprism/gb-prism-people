@@ -19,7 +19,8 @@
     "build:templates": "node --no-warnings scripts/build-templates.js"
   },
   "dependencies": {
-    "exceljs": "4.4.0"
+    "exceljs": "4.4.0",
+    "pptxgenjs": "4.0.1"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.1.0",

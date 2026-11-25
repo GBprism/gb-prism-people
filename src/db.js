@@ -289,6 +289,134 @@ export const MIGRATIONS = [
    ALTER TABLE leave_types_v13 RENAME TO leave_types;
    INSERT OR IGNORE INTO leave_types (id, tenant_id, code, name, category, tracks_balance, requires_cover)
      SELECT 'lt_' || id || '_AC', id, 'AC', 'At client', 'client', 0, 0 FROM tenants WHERE id = 'gb-advisory';` },
+  // ---- 014 company-profile facts (shown to colleagues), photos, and GB service lines on projects --
+  `ALTER TABLE employee_profiles ADD COLUMN public_title TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN years_experience TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN expertise TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN education TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN certifications TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN bio TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN industries TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN functions TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN cv_projects TEXT;
+   CREATE TABLE user_photos (
+     user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL, mime TEXT NOT NULL,
+     data BLOB NOT NULL, sha256 TEXT NOT NULL, source TEXT, updated_by TEXT, updated_at TEXT NOT NULL);
+   ALTER TABLE projects ADD COLUMN service_line TEXT;`,
+  // ---- 015 knowledge library (clients, engagements, proposals) and GB strategy KPIs ---------------
+  // Visible to every active colleague. No fees, values or contract terms are stored here.
+  `CREATE TABLE clients (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, name_en TEXT NOT NULL, name_ar TEXT,
+     short TEXT, sector TEXT, country TEXT, drive_url TEXT, notes TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE engagements (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES clients(id), key TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, domain TEXT, service_line TEXT, scope_en TEXT, scope_ar TEXT,
+     year_from INTEGER, year_to INTEGER,
+     status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('running','completed','on_hold')),
+     lead_name TEXT, team_names TEXT, subcontractor TEXT, drive_url TEXT,
+     project_id TEXT REFERENCES projects(id), source TEXT, updated_by TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE proposals (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES clients(id), key TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, domain TEXT, submitted_on TEXT,
+     outcome TEXT NOT NULL DEFAULT 'submitted' CHECK (outcome IN ('drafting','submitted','won','lost','withdrawn','no_go')),
+     decided_on TEXT, outcome_note TEXT, owner_name TEXT, drive_url TEXT,
+     engagement_id TEXT REFERENCES engagements(id), source TEXT, updated_by TEXT, updated_at TEXT,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE strategy_objectives (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, theme TEXT NOT NULL,
+     title_en TEXT NOT NULL, title_ar TEXT, position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, code));
+   CREATE TABLE strategy_kpis (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name_en TEXT NOT NULL, name_ar TEXT,
+     objective_codes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, code));
+   CREATE TABLE plan_item_kpi_links (
+     plan_item_id TEXT NOT NULL REFERENCES plan_items(id) ON DELETE CASCADE, kpi_id TEXT NOT NULL REFERENCES strategy_kpis(id),
+     tenant_id TEXT NOT NULL, linked_by TEXT, linked_at TEXT NOT NULL, PRIMARY KEY (plan_item_id, kpi_id));
+   CREATE INDEX engagements_client ON engagements(client_id);
+   CREATE INDEX proposals_client ON proposals(client_id);`,
+  // ---- 016 workplace: expenses, timesheets, letters, checklists, policies, onboarding, brand, CV updates
+  `CREATE TABLE files (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT REFERENCES users(id), purpose TEXT NOT NULL,
+     filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL);
+   CREATE TABLE expense_claims (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL,
+     period_from TEXT, period_to TEXT, currency TEXT NOT NULL DEFAULT 'JOD',
+     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected','paid')),
+     total_x100 INTEGER NOT NULL DEFAULT 0, submitted_at TEXT, approver_id TEXT REFERENCES users(id),
+     decided_by TEXT, decided_at TEXT, decision_note TEXT, paid_by TEXT, paid_at TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE expense_lines (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, claim_id TEXT NOT NULL REFERENCES expense_claims(id) ON DELETE CASCADE,
+     spent_on TEXT NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, project_id TEXT REFERENCES projects(id),
+     project_text TEXT, chargeable INTEGER NOT NULL DEFAULT 0, receipt_amount_x100 INTEGER NOT NULL CHECK (receipt_amount_x100 > 0),
+     receipt_currency TEXT NOT NULL, fx_rate TEXT NOT NULL DEFAULT '1', amount_x100 INTEGER NOT NULL CHECK (amount_x100 > 0),
+     receipt_file_id TEXT REFERENCES files(id), position INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE timesheet_entries (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), month TEXT NOT NULL,
+     work_date TEXT NOT NULL, code TEXT NOT NULL, project_id TEXT REFERENCES projects(id), hours_x100 INTEGER NOT NULL CHECK (hours_x100 >= 0),
+     source TEXT NOT NULL DEFAULT 'manual', UNIQUE(user_id, work_date, code));
+   CREATE TABLE timesheet_months (
+     user_id TEXT NOT NULL REFERENCES users(id), month TEXT NOT NULL, tenant_id TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','submitted','approved','returned')),
+     submitted_at TEXT, decided_by TEXT, decided_at TEXT, note TEXT, PRIMARY KEY (user_id, month));
+   CREATE TABLE letter_templates (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT, language TEXT,
+     fields_json TEXT NOT NULL DEFAULT '[]', body TEXT NOT NULL, signatory TEXT, has_compensation INTEGER NOT NULL DEFAULT 0,
+     source_url TEXT, active INTEGER NOT NULL DEFAULT 1, UNIQUE(tenant_id, key));
+   CREATE TABLE letter_requests (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), template_key TEXT,
+     kind TEXT NOT NULL, addressee TEXT, purpose TEXT, language TEXT NOT NULL DEFAULT 'en', needed_by TEXT,
+     status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','issued','rejected','cancelled')),
+     decided_by TEXT, decided_at TEXT, note TEXT, issued_fields_json TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE checklists (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('general','specific')),
+     deliverable_type TEXT, title TEXT NOT NULL, title_ar TEXT, items_json TEXT NOT NULL, source_name TEXT, source_url TEXT,
+     position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, key));
+   CREATE TABLE deliverable_checks (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, deliverable_id TEXT NOT NULL REFERENCES deliverables(id),
+     user_id TEXT NOT NULL REFERENCES users(id), checklist_keys TEXT NOT NULL, items_checked INTEGER NOT NULL,
+     note TEXT, drive_url TEXT, confirmed_at TEXT NOT NULL);
+   ALTER TABLE deliverables ADD COLUMN deliverable_type TEXT;
+   ALTER TABLE deliverables ADD COLUMN submitted_by TEXT;
+   ALTER TABLE deliverables ADD COLUMN submitted_at TEXT;
+   CREATE TABLE policies (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT,
+     version TEXT, effective TEXT, summary TEXT, rules_json TEXT NOT NULL DEFAULT '[]', applies_to TEXT, source_url TEXT,
+     requires_ack INTEGER NOT NULL DEFAULT 1, UNIQUE(tenant_id, key));
+   CREATE TABLE policy_acks (
+     policy_id TEXT NOT NULL REFERENCES policies(id), user_id TEXT NOT NULL REFERENCES users(id), version TEXT,
+     acked_at TEXT NOT NULL, PRIMARY KEY (policy_id, user_id));
+   CREATE TABLE onboarding_items (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT, purpose TEXT,
+     stage TEXT NOT NULL, owner TEXT NOT NULL, action TEXT NOT NULL, source_url TEXT, position INTEGER NOT NULL DEFAULT 0,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE onboarding_progress (
+     user_id TEXT NOT NULL REFERENCES users(id), item_id TEXT NOT NULL REFERENCES onboarding_items(id), tenant_id TEXT NOT NULL,
+     done_by TEXT, done_at TEXT NOT NULL, PRIMARY KEY (user_id, item_id));
+   CREATE TABLE brand_files (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, file_id TEXT NOT NULL REFERENCES files(id), label TEXT NOT NULL,
+     variant TEXT, orientation TEXT, position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, label));
+   CREATE TABLE cv_updates (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), fields_json TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied','rejected')),
+     decided_by TEXT, decided_at TEXT, note TEXT, created_at TEXT NOT NULL);
+   ALTER TABLE employee_profiles ADD COLUMN languages TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN linkedin TEXT;
+   ALTER TABLE projects ADD COLUMN chat_url TEXT;
+   ALTER TABLE projects ADD COLUMN meet_url TEXT;
+   CREATE INDEX timesheet_user_month ON timesheet_entries(user_id, month);
+   CREATE INDEX expense_lines_claim ON expense_lines(claim_id);`,
+  // ---- 017 office running costs and company documents (licences and other government papers) ------
+  `CREATE TABLE office_expenses (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, spent_on TEXT NOT NULL, month TEXT NOT NULL, category TEXT NOT NULL,
+     vendor TEXT, description TEXT, amount_x100 INTEGER NOT NULL CHECK (amount_x100 > 0), currency TEXT NOT NULL DEFAULT 'JOD',
+     paid_by TEXT NOT NULL DEFAULT 'company', receipt_file_id TEXT REFERENCES files(id), entered_by TEXT NOT NULL REFERENCES users(id),
+     created_at TEXT NOT NULL, updated_at TEXT);
+   CREATE INDEX office_expenses_month ON office_expenses(tenant_id, month);
+   CREATE TABLE company_documents (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, number TEXT, issuer TEXT,
+     issued_on TEXT, expires_on TEXT, renewal_owner_id TEXT REFERENCES users(id), notes TEXT, file_id TEXT REFERENCES files(id),
+     drive_url TEXT, archived INTEGER NOT NULL DEFAULT 0, updated_by TEXT, updated_at TEXT NOT NULL);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

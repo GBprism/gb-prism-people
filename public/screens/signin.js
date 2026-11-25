@@ -10,11 +10,11 @@ export async function signInScreen({ api }) {
     h('img', { src: '/brand/gb-logo-white.png', alt: 'GB Advisory', class: 'signin-logo' }),
     h('div', { class: 'signin-pitch' },
       h('h1', {}, 'People & Performance'),
-      h('p', {}, 'One place for the GB Advisory team to plan goals, complete reviews and request time off.'),
+      h('p', {}, 'One place for the GB Advisory team to plan goals, complete reviews and request time off — so we keep preparing our clients today for the world of tomorrow.'),
       h('ul', { class: 'signin-points' },
         [['clipboard-check', 'Reviews from plan to development actions'], ['calendar-days', 'Time off and off-site days with live balances'], ['folder-kanban', 'Projects and who contributed what'], ['shield-check', 'Private by design: you only see what is yours to see']]
           .map(([ic, t]) => h('li', {}, icon(ic, { size: 'lg' }), t)))),
-    h('p', { class: 'signin-foot' }, 'GB Prism · Go beyond'));
+    h('p', { class: 'signin-foot' }, 'GB Advisory · Helping you go beyond your limits'));
   const form = h('section', { class: 'signin-form' }, h('div', { class: 'signin-card' },
     h('img', { src: '/brand/gb-mark.png', alt: '', class: 'signin-mark' }),
     h('h2', {}, 'Sign in'),

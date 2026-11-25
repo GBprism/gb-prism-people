@@ -7,6 +7,7 @@
 import { tx, uid, now, J, P, audit, bad, conflict, forbid, notFound } from '../db.js';
 import { assertPlan, planAccess, has, isOps, assertTenantUsers } from './authz.js';
 import { computeScore, validateWeights, DEFAULT_SCORING, validRating } from './scoring.js';
+import { planItemLinks } from './library.js';
 
 export const STATES = ['draft_plan', 'approved_plan', 'self_assessment', 'manager_review', 'partner_calibration', 'released', 'acknowledged', 'closed'];
 export const STATE_LABEL = {
@@ -472,8 +473,9 @@ export function planView(db, actor, planId) {
     return { id: plan.id, employee: emp, access: c, assignments: asg, myFeedback: mine };
   }
   const { cycle, cfg } = cycleCfg(db, plan.cycle_id);
+  const links = planItemLinks(db, planId);
   const its = items(db, planId).map((i) => {
-    const o = { id: i.id, category: i.category, title: i.title, description: i.description, kpi: i.kpi, target: i.target, weight: i.weight,
+    const o = { strategy: links[i.id] || [], id: i.id, category: i.category, title: i.title, description: i.description, kpi: i.kpi, target: i.target, weight: i.weight,
       expected_proficiency: i.expected_proficiency, anchors: P(i.anchors_json), carried_from_item_id: i.carried_from_item_id,
       evidence_required: !!i.evidence_required, na: !!i.na, na_reason: i.na_reason, na_approved: !!i.na_approved_by, source_rating_raw: i.source_rating_raw };
     if (c.viewSelf) Object.assign(o, { actual: i.actual, self_rating: i.self_rating, self_rationale: i.self_rationale, self_evidence: P(i.self_evidence_json, []) });
@@ -488,6 +490,7 @@ export function planView(db, actor, planId) {
     category_weights: P(plan.category_weights_json, {}), rubric_version: plan.rubric_version, approved_revision: plan.approved_revision,
     basis_status: plan.basis_status, basis_note: plan.basis_note, scale: cfg.scale, scoring_status: cfg.status, row_version: plan.row_version,
     access: c, items: its,
+    can_link_strategy: plan.state !== 'closed' && (isOps(actor) || ['self', 'reviewer', 'category_reviewer', 'partner'].includes(c.relation)),
     summary: { self: c.viewSelf ? summary.self : undefined, manager: c.viewManager ? summary.manager : undefined },
     revisions: db.prepare('SELECT revision, kind, approved_by, approved_at, note FROM plan_revisions WHERE plan_id = ? ORDER BY revision').all(planId),
     transitions: db.prepare('SELECT from_state, to_state, actor_id, reason, at FROM plan_transitions WHERE plan_id = ? ORDER BY id').all(planId),

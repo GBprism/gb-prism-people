@@ -1,7 +1,7 @@
 // HR profiles. "My profile" for everyone (read-only); "People" directory with an
 // edit drawer for People Ops and partners. The server enforces who may see what:
 // the person, People Ops/admin and partners — never managers or peers.
-import { h, icon, button, badge, card, banner, emptyState, dataTable, filterChips, openDrawer, field, input, textarea, toast } from '/ui.js';
+import { h, icon, button, badge, card, banner, emptyState, dataTable, filterChips, openDrawer, field, input, textarea, toast, avatar } from '/ui.js';
 
 const fmt = (s) => (s ? new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const monthYear = (s) => (s ? new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '');
@@ -23,7 +23,29 @@ function kv(rows) {
   return h('dl', { class: 'kv' }, rows.filter(Boolean).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v ?? '—')]));
 }
 
-function profileBody(p) {
+function photoHeader(p, { api, canPhoto, onChange } = {}) {
+  const fileIn = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', class: 'visually-hidden', id: `photo_${p.user.id}`, 'aria-label': 'Choose a photo', onchange: async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    if (f.size > 1.5 * 1024 * 1024) return toast('Choose a photo under 1.5 MB', 'danger');
+    try { await api(`/api/profiles/${p.user.id}/photo`, { method: 'POST', raw: await f.arrayBuffer() }); toast('Photo updated'); onChange?.(); } catch (err) { toast(err.message, 'danger'); }
+  } });
+  return h('div', { class: 'photo-edit' }, avatar({ name: p.user.name, photo: p.photo }, 'lg'),
+    h('div', { class: 'stack' }, h('strong', {}, p.user.name), h('span', { class: 'muted' }, [p.public_title || p.title, p.years_experience ? `${p.years_experience} years’ experience` : null].filter(Boolean).join(' · ')),
+      canPhoto ? h('div', {}, fileIn, button(p.photo ? 'Change photo' : 'Add photo', { size: 'sm', iconName: 'upload', onClick: () => fileIn.click() })) : null));
+}
+
+function companyProfileCard(p) {
+  if (!p.public_title && !p.education && !p.bio) return null;
+  return card({ title: 'Company profile', iconName: 'building-2', body: h('div', { class: 'stack' },
+    p.bio ? h('p', {}, p.bio) : null,
+    kv([['Title (client-facing)', p.public_title], ['Experience', [p.years_experience ? `${p.years_experience} years` : null, p.expertise].filter(Boolean).join(' · ') || null],
+      ['Education', p.education], p.certifications ? ['Certifications', p.certifications] : null, p.industries ? ['Industries', p.industries.replace(/;\s*/g, ' · ')] : null,
+      p.functions ? ['Functional experience', p.functions.replace(/;\s*/g, ' · ')] : null]),
+    p.cv_projects ? h('details', {}, h('summary', {}, `Previous projects (${p.cv_projects.split('\n').filter(Boolean).length})`), h('ul', { class: 'bullets' }, p.cv_projects.split('\n').filter(Boolean).map((x) => h('li', {}, x)))) : null,
+    h('p', { class: 'profile-note' }, icon('users'), ' Shown to every colleague on the Team page.')) });
+}
+
+function profileBody(p, opts = {}) {
   const emp = card({ title: 'Employment', iconName: 'briefcase', body: kv([
     ['Title', p.title], ['Level (2026)', p.level || p.title], ['Manager', p.manager],
     ['Joined GB', p.hire_date ? `${fmt(p.hire_date)} · ${p.years_with_gb} years` : '—'],
@@ -48,12 +70,12 @@ function profileBody(p) {
     card({ title: 'Equipment & learning', iconName: 'briefcase', body: kv([['Laptop & software', p.equipment || 'Not in the IT register'], ['Learning', p.learning_notes || '—']]) })) : null;
   const gaps = p.gaps_list.length ? banner({ tone: 'warning', title: 'Still to confirm', text: p.gaps_list.join(' · ') }) : null;
   const foot = h('p', { class: 'profile-note' }, icon('lock'), ` Visible only to ${p.can_edit ? 'this person' : 'you'}, People Ops and partners.`, p.source ? ` Source: ${p.source}${p.updated_at ? `, updated ${fmt(p.updated_at.slice(0, 10))}` : ''}.` : '');
-  return [gaps, h('div', { class: 'profile-grid' }, emp, personal), work, more, foot];
+  return [photoHeader(p, opts), gaps, h('div', { class: 'profile-grid' }, emp, personal), companyProfileCard(p), work, more, foot];
 }
 
 export async function myProfileScreen({ api }) {
   const p = await api('/api/profile');
-  const root = h('div', { class: 'profile' }, profileBody(p));
+  const root = h('div', { class: 'profile' }, profileBody(p, { api, canPhoto: true, onChange: () => dispatchEvent(new HashChangeEvent('hashchange')) }));
   root.modern = true;
   return root;
 }
@@ -62,6 +84,8 @@ const EDIT = [
   ['level', 'Level (2026)'], ['probation_status', 'Probation'], ['contract_status', 'Post-probation contract'], ['date_of_birth', 'Date of birth (yyyy-mm-dd)'],
   ['social_security_status', 'Social security'], ['medical_insurance_status', 'Medical insurance'], ['gym_stipend_status', 'Gym stipend'],
   ['leave_history', 'Leave history (separate years with ·)', true], ['equipment', 'Laptop & software', true], ['learning_notes', 'Learning', true],
+  ['public_title', 'Title (client-facing)'], ['years_experience', 'Years of experience'], ['expertise', 'Experience'], ['education', 'Education', true], ['certifications', 'Certifications'],
+  ['bio', 'CV summary', true], ['industries', 'Industries (separate with ;)', true], ['functions', 'Functional experience (separate with ;)', true], ['cv_projects', 'Previous projects (one per line)', true],
   ['projects_summary', 'Projects and roles (separate with ;)', true], ['proposals_summary', 'Proposals (separate with ;)', true], ['gaps', 'Still to confirm (separate with ;)', true],
 ];
 
@@ -70,7 +94,7 @@ async function openProfile(api, id, onSaved) {
   let editing = false;
   const body = h('div', { class: 'stack' });
   const draw = () => {
-    if (!editing) return body.replaceChildren(...profileBody(p).filter(Boolean));
+    if (!editing) return body.replaceChildren(...profileBody(p, { api, canPhoto: true, onChange: async () => { Object.assign(p, await api(`/api/profiles/${id}`)); draw(); onSaved(); } }).filter(Boolean));
     body.replaceChildren(h('form', { class: 'stack', id: 'profile-form' }, EDIT.map(([k, label, long]) => field({ label, id: `pf_${k}`, control: long ? textarea({ id: `pf_${k}`, name: k, rows: 3 }, p[k] || '') : input({ id: `pf_${k}`, name: k, value: p[k] || '' }) })),
       h('p', { class: 'profile-note' }, 'Title, manager and joining date are changed on the Roster page. The audit log records which fields changed, not their values.')));
   };
@@ -97,7 +121,7 @@ export async function peopleScreen({ api }) {
   const flags = (r) => [r.contract_status, r.social_security_status, r.medical_insurance_status].filter((s) => statusTone(s) === 'warning').length;
   const table = dataTable({
     columns: [
-      { key: 'name', label: 'Name', render: (r) => h('div', {}, h('strong', {}, r.name), h('div', { class: 'muted cell-sub' }, r.level || r.title || '—')) },
+      { key: 'name', label: 'Name', render: (r) => h('div', { class: 'person-cell' }, avatar(r, 'md'), h('div', {}, h('strong', {}, r.name), h('div', { class: 'muted cell-sub' }, r.level || r.title || '—'))) },
       { key: 'hire_date', label: 'Joined', render: (r) => (r.hire_date ? h('span', {}, h('span', { class: 'nowrap' }, fmt(r.hire_date)), h('div', { class: 'muted cell-sub' }, `${r.years_with_gb} yrs`)) : '—') },
       { key: 'probation_status', label: 'Probation', render: (r) => (r.probation_end ? statusBadge(`Ended ${fmt(r.probation_end)}`) : statusBadge(r.probation_status)) },
       { key: 'contract_status', label: 'Contract', render: (r) => statusBadge(r.contract_status) },

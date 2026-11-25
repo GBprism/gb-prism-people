@@ -6,6 +6,9 @@
 //   <dir>/leaveboard/*.xlsx        LeaveBoard exports (General situation, Annual situation, Attendance)
 //   <dir>/reviewers-2026.xlsx      2026 PMS – Consultant Reviewers workbook
 //   <dir>/hr-evidence.json         facts verified from email (insurer list, contracts, probation)
+//   <dir>/onboarding-letters.json, checklists.json, policies-brand-expenses.json, brand/*.png  workplace content
+//   <dir>/title-renames.json       GB decisions renaming job titles
+//   <dir>/library.json             clients, engagements, proposals and GB strategy KPIs (see src/domain/library.js)
 //
 //   node scripts/load-gb-all.js --dir config/private/real [--db data/prism-people.db] [--cutover 2026-11-19] [--dry-run]
 // --dry-run runs everything against a temporary copy of the database and prints the report.
@@ -20,8 +23,12 @@ import { loadActor } from '../src/domain/authz.js';
 import { previewGbForms, applyGbForms } from '../src/imports/gbform.js';
 import { previewHistoryRows, applyHistory } from '../src/imports/pms.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances } from '../src/imports/leaveboard.js';
-import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides } from '../src/imports/gbworkbook.js';
+import { parseGbWorkbook, applyGbWorkbook, applyHrEvidence, applyProjectEvidence, applyReviewerOverrides, applyPhotos, applyServiceLines, applyTitleRenames, nameMatcher } from '../src/imports/gbworkbook.js';
+import { officeAdmins, setOfficeAdmins } from '../src/domain/office.js';
 import { sha256 } from '../src/imports/xlsx.js';
+import { SERVICE_LINES } from '../src/domain/projects.js';
+import { applyLibrary } from '../src/domain/library.js';
+import { applyWorkplace } from '../src/domain/workplace.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const dir = arg('dir', 'config/private/real');
@@ -44,7 +51,7 @@ const cycle = db.prepare("SELECT * FROM cycles WHERE tenant_id = ? AND year = 20
 
 // 2. 2026 PMS forms
 if (has('forms') && cycle) {
-  const files = fs.readdirSync(path.join(dir, 'forms')).filter((f) => f.endsWith('.xlsx') && !/template|muhyeddin/i.test(f))
+  const files = fs.readdirSync(path.join(dir, 'forms')).filter((f) => f.endsWith('.xlsx') && !/template/i.test(f))
     .map((f) => ({ filename: f, buffer: fs.readFileSync(path.join(dir, 'forms', f)) }));
   // forms are named "<work-email name>-2026_….xlsx" (several have a blank name cell): register that name as a verified alias
   for (const f of files) {
@@ -92,8 +99,9 @@ if (has('leaveboard')) {
 }
 
 // 5. reviewer workbook (profiles, reviewers, project log) and 6. email evidence
+const titleRenames = has('title-renames.json') ? JSON.parse(fs.readFileSync(path.join(dir, 'title-renames.json'), 'utf8')).renames || {} : {};
 if (has('reviewers-2026.xlsx')) {
-  const rep = applyGbWorkbook(db, actor, await parseGbWorkbook(fs.readFileSync(path.join(dir, 'reviewers-2026.xlsx'))), {});
+  const rep = applyGbWorkbook(db, actor, await parseGbWorkbook(fs.readFileSync(path.join(dir, 'reviewers-2026.xlsx'))), { titleRenames });
   log(`HR profiles (${rep.profiles.length})`, rep.profiles); log(`Reviewers (${rep.reviewers.length})`, rep.reviewers);
   log(`Project register (${rep.projects.length} lines)`, rep.projects); log(`Skipped (${rep.skipped.length})`, rep.skipped);
 }
@@ -106,6 +114,37 @@ for (const f of fs.readdirSync(dir).filter((x) => /^hr-evidence.*\.json$/.test(x
 for (const f of fs.readdirSync(dir).filter((x) => /^projects-evidence.*\.json$/.test(x)).sort()) {
   const ev = applyProjectEvidence(db, actor, JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
   log(`Projects from ${f} (${ev.projects.length} projects, ${ev.assignments.length} assignments)`, [...ev.projects, ...ev.assignments, ...ev.skipped.map((x) => `skipped: ${x}`)]);
+}
+
+if (Object.keys(titleRenames).length) log('Job titles (GB decisions)', applyTitleRenames(db, actor, titleRenames));
+if (has('photos')) log('Photos', applyPhotos(db, actor, fs.readdirSync(path.join(dir, 'photos')).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort()
+  .map((f) => ({ filename: f, buffer: fs.readFileSync(path.join(dir, 'photos', f)) }))));
+if (has('service-lines.json')) log('Service lines', applyServiceLines(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'service-lines.json'), 'utf8')), SERVICE_LINES));
+// 7. knowledge library (clients, engagements, proposals) and GB strategy KPIs — after the projects so links resolve
+if (has('library.json')) {
+  const r = applyLibrary(db, actor, JSON.parse(fs.readFileSync(path.join(dir, 'library.json'), 'utf8')));
+  log('Library and strategy', [`${r.clients} clients, ${r.engagements} engagements, ${r.proposals} proposals, ${r.objectives} objectives, ${r.kpis} KPIs`, r.kept ? `${r.kept} rows edited in the portal kept as they are` : null, ...r.problems].filter(Boolean));
+}
+// 8. workplace content: letter templates, deliverable checklists, AI policies, onboarding and the brand kit
+{
+  const read = (f) => (has(f) ? JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) : null);
+  const ol = read('onboarding-letters.json'); const cl = read('checklists.json'); const pb = read('policies-brand-expenses.json');
+  if (ol || cl || pb) {
+    const brand = (pb?.brand_files || []).filter((b) => has(b.file)).map((b, i) => ({ label: `GB Advisory logo ${i + 1}`, variant: b.variant, orientation: b.orientation, filename: path.basename(b.file), buffer: fs.readFileSync(path.join(dir, b.file)) }));
+    const r = applyWorkplace(db, actor, { letters: ol?.letters || [], onboarding: ol?.onboarding || [], checklists: cl || undefined, policies: (pb?.ai_policies || []).map((p) => ({ ...p, category: 'AI' })), brand });
+    log('Workplace content', `${r.letters} letter templates, ${r.checklists} checklists, ${r.policies} policies, ${r.onboarding} onboarding steps, ${r.brand} brand files`);
+  }
+}
+// 9. who keeps the office expenses and company documents (only until someone is chosen in the portal)
+if (has('office.json')) {
+  const want = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')).office_admins || [];
+  if (officeAdmins(db, actor.tenantId).length) log('Office administrators', 'already chosen in the portal — left as is');
+  else {
+    const match = nameMatcher(db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId).map((u) => ({ ...u, aliases: [] })));
+    const ids = want.map((n) => match(n)?.id).filter(Boolean);
+    setOfficeAdmins(db, actor, ids);
+    log('Office administrators', want.map((n) => `${n}: ${match(n) ? 'assigned' : 'not on the roster'}`));
+  }
 }
 
 const n = (sql) => db.prepare(sql).get(actor.tenantId).n;
