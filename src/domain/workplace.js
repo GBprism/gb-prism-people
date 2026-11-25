@@ -148,7 +148,9 @@ export function brandFile(db, actor, id, download) {
 // ---------------------------------------------------------------- CV updates --
 /** Employees propose changes to their CV facts; People Ops or a partner applies them to the profile. */
 export function proposeCvUpdate(db, actor, fields = {}) {
-  const clean = Object.fromEntries(Object.entries(fields).filter(([k]) => PUBLIC_FIELDS.includes(k)).map(([k, v]) => [k, str(v, 4000)]));
+  const allowed = [...PUBLIC_FIELDS, 'date_of_birth'];
+  const clean = Object.fromEntries(Object.entries(fields).filter(([k]) => allowed.includes(k)).map(([k, v]) => [k, str(v, 4000)]));
+  if (clean.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(clean.date_of_birth)) throw bad('Date of birth: use yyyy-mm-dd');
   if (!Object.keys(clean).length) throw bad('Nothing to update');
   const open = db.prepare("SELECT id FROM cv_updates WHERE user_id = ? AND status = 'pending'").get(actor.id);
   if (open) db.prepare('UPDATE cv_updates SET fields_json = ?, created_at = ? WHERE id = ?').run(JSON.stringify(clean), now(), open.id);

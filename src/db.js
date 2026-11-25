@@ -417,6 +417,38 @@ export const MIGRATIONS = [
      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, number TEXT, issuer TEXT,
      issued_on TEXT, expires_on TEXT, renewal_owner_id TEXT REFERENCES users(id), notes TEXT, file_id TEXT REFERENCES files(id),
      drive_url TEXT, archived INTEGER NOT NULL DEFAULT 0, updated_by TEXT, updated_at TEXT NOT NULL);`,
+  // ---- 018 two-step leave approval (project manager, then GB's approver), messages, gym allowance, user prefs --
+  `ALTER TABLE leave_requests ADD COLUMN stage TEXT NOT NULL DEFAULT 'final';
+   ALTER TABLE leave_requests ADD COLUMN pm_id TEXT REFERENCES users(id);
+   ALTER TABLE leave_requests ADD COLUMN pm_project_id TEXT REFERENCES projects(id);
+   ALTER TABLE leave_requests ADD COLUMN pm_decided_by TEXT;
+   ALTER TABLE leave_requests ADD COLUMN pm_decided_at TEXT;
+   ALTER TABLE leave_requests ADD COLUMN pm_note TEXT;
+   CREATE TABLE conversations (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, title TEXT, kind TEXT NOT NULL CHECK (kind IN ('direct','group')),
+     direct_key TEXT, project_id TEXT REFERENCES projects(id), created_by TEXT NOT NULL, created_at TEXT NOT NULL, last_at TEXT NOT NULL,
+     UNIQUE(tenant_id, direct_key));
+   CREATE TABLE conversation_members (
+     conversation_id TEXT NOT NULL REFERENCES conversations(id), user_id TEXT NOT NULL REFERENCES users(id),
+     last_read_at TEXT, joined_at TEXT NOT NULL, PRIMARY KEY (conversation_id, user_id));
+   CREATE TABLE messages (
+     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id), sender_id TEXT NOT NULL REFERENCES users(id),
+     body TEXT NOT NULL, created_at TEXT NOT NULL);
+   CREATE INDEX messages_conv ON messages(conversation_id, created_at);
+   CREATE TABLE gym_claims (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), gym_name TEXT NOT NULL,
+     valid_from TEXT NOT NULL, valid_to TEXT NOT NULL, file_id TEXT NOT NULL REFERENCES files(id),
+     status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','approved','rejected')),
+     decided_by TEXT, decided_at TEXT, note TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE user_prefs (user_id TEXT NOT NULL REFERENCES users(id), key TEXT NOT NULL, value_json TEXT NOT NULL, PRIMARY KEY (user_id, key));`,
+  // ---- 019 Claude accounts: which seats are active and who works on each, on what ----------------------
+  `CREATE TABLE claude_accounts (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, seat_email TEXT NOT NULL, plan TEXT NOT NULL DEFAULT 'Team',
+     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','closed')), monthly_limit TEXT, notes TEXT,
+     updated_by TEXT, updated_at TEXT NOT NULL, UNIQUE(tenant_id, seat_email));
+   CREATE TABLE claude_account_users (
+     account_id TEXT NOT NULL REFERENCES claude_accounts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id),
+     project_id TEXT REFERENCES projects(id), working_on TEXT, since TEXT, PRIMARY KEY (account_id, user_id));`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

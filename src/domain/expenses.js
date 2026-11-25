@@ -48,7 +48,9 @@ export function claimView(db, actor, id) {
       LEFT JOIN files f ON f.id = l.receipt_file_id WHERE l.claim_id = ? ORDER BY l.position, l.spent_on`).all(id).map((l) => ({ ...l, chargeable: !!l.chargeable }));
   const who = (u) => (u ? db.prepare('SELECT name FROM users WHERE id = ?').get(u)?.name : null);
   return { ...c, employee: who(c.user_id), approver: who(c.approver_id), decided_by_name: who(c.decided_by), lines,
-    can: { edit: c.user_id === actor.id && c.status === 'draft', decide: c.status === 'submitted' && canDecide(actor, c), pay: c.status === 'approved' && isOps(actor) } };
+    can: { edit: c.user_id === actor.id && c.status === 'draft', decide: c.status === 'submitted' && canDecide(actor, c), pay: c.status === 'approved' && isOps(actor),
+      withdraw: c.user_id === actor.id && c.status === 'submitted',
+      cancel: c.user_id !== actor.id && ['submitted', 'approved'].includes(c.status) && (isOps(actor) || has(actor, 'partner') || c.approver_id === actor.id) } };
 }
 
 export function listClaims(db, actor, { scope = 'mine' } = {}) {
@@ -147,6 +149,18 @@ export function markPaid(db, actor, id) {
   const c = load(db, actor, id); if (!isOps(actor)) throw forbid(); if (c.status !== 'approved') throw bad('Only approved claims can be marked paid');
   db.prepare("UPDATE expense_claims SET status = 'paid', paid_by = ?, paid_at = ? WHERE id = ?").run(actor.id, now(), id);
   audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'expense.paid', entity: 'expense_claim', entityId: id });
+  return { ok: true };
+}
+
+/** The approver, a partner or People Ops cancels a submitted or approved claim (e.g. sent by mistake). */
+export function cancelClaim(db, actor, id, { note } = {}) {
+  const c = load(db, actor, id);
+  if (c.user_id === actor.id && c.status === 'submitted') { db.prepare("UPDATE expense_claims SET status = 'draft', approver_id = NULL, submitted_at = NULL WHERE id = ?").run(id); return { ok: true, withdrawn: true }; }
+  if (!(isOps(actor) || has(actor, 'partner') || c.approver_id === actor.id) || c.user_id === actor.id) throw forbid();
+  if (!['submitted', 'approved'].includes(c.status)) throw bad('Only submitted or approved claims can be cancelled');
+  const n = String(note || '').trim().slice(0, 500); if (!n) throw bad('Give a short reason');
+  db.prepare("UPDATE expense_claims SET status = 'rejected', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?").run(actor.id, now(), n, id);
+  audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'expense.cancel', entity: 'expense_claim', entityId: id, reason: n });
   return { ok: true };
 }
 

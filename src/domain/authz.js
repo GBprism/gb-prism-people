@@ -119,7 +119,9 @@ export function leaveAccess(db, actor, req) {
   if (!req || req.tenant_id !== actor.tenantId) return null;
   if (req.user_id === actor.id) return { relation: 'self', viewReason: true, viewBalance: true, decide: false };
   const approver = req.approver_id === actor.id || req.backup_approver_id === actor.id;
+  // GB's approver can decide at any step (final authority); the project manager decides only at their step
   if (approver) return { relation: 'approver', viewReason: true, viewBalance: true, decide: req.state === 'submitted' };
+  if (req.pm_id && req.pm_id === actor.id) return { relation: 'pm', viewReason: true, viewBalance: false, decide: req.state === 'submitted' && req.stage === 'pm' };
   if (isOps(actor)) return { relation: 'ops', viewReason: true, viewBalance: true, decide: false };
   return null;
 }

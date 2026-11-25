@@ -184,3 +184,20 @@ export function registerView(db, actor, { projectId } = {}) {
             name: db.prepare('SELECT name FROM users WHERE id = ?').get(a.user_id)?.name }; }) : [] };
     });
 }
+
+/** Running engagements for everyone: dates, client and scope (from the library), lead, team, Drive and chat links. */
+export function activeProjects(db, actor) {
+  const rows = db.prepare(`SELECT p.id, p.name, p.client, p.start_date, p.end_date, p.service_line, p.drive_url, p.chat_url, p.meet_url, u.name lead_name, p.lead_user_id,
+      e.title_en, e.scope_en, e.scope_ar, e.drive_url lib_drive, c.name_en client_name, c.country, c.sector
+    FROM projects p LEFT JOIN users u ON u.id = p.lead_user_id
+    LEFT JOIN engagements e ON e.project_id = p.id AND e.tenant_id = p.tenant_id
+    LEFT JOIN clients c ON c.id = e.client_id
+    WHERE p.tenant_id = ? AND p.kind = 'engagement' AND p.status = 'active' AND p.register_status != 'archived'
+    ORDER BY COALESCE(p.start_date, '9999') DESC, p.name`).all(actor.tenantId);
+  const seen = new Set();
+  return rows.filter((r) => !seen.has(r.id) && seen.add(r.id)).map((r) => ({ ...r, drive_url: r.drive_url || r.lib_drive, lib_drive: undefined,
+    team: db.prepare(`SELECT u.id, u.name, a.role, a.status FROM project_assignments a JOIN users u ON u.id = a.user_id WHERE a.project_id = ? AND a.status IN ('confirmed','tentative','historical','provisional')
+        AND (a.end_date IS NULL OR a.end_date >= date('now')) ORDER BY a.status = 'confirmed' DESC, u.name`).all(r.id)
+      .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i),
+    mine: r.lead_user_id === actor.id || !!db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(r.id, actor.id) }));
+}

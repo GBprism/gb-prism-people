@@ -126,6 +126,28 @@ The private bundle also carries `title-renames.json` (job-title decisions, e.g. 
 - **Letters**: People Ops prints from the template on letterhead (browser print / save as PDF). Pay fields are typed at print time and never saved.
 - **CV slides** are generated as .pptx in GB's layout (`/api/cv/<id>` or `/api/cv/all`). Set `CV_ASSET_DIR` only if the icons live somewhere other than `config/private/real/cv-template/media`.
 
+## Email notifications (requests, approvals, messages)
+
+The portal emails whoever must act: a project manager or the final approver for time off, the approver for an expense claim, People Ops and the leave approver for letters, profile changes, timesheets and gym registrations, members of a conversation for new messages (at most one email per conversation per hour), and the office administrators for expiring documents. People can switch these emails off in My profile. Emails carry a one-line summary and a link — never balances, pay or ratings.
+
+To send them, add SMTP settings to the server settings file (never to GitHub or chat):
+```bash
+sudo nano /etc/gb-prism/env
+```
+Add these lines (Google Workspace example: a mailbox such as notifications@gb-advisory.com with 2-Step Verification on and an **app password** created at myaccount.google.com → Security → App passwords):
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=notifications@gb-advisory.com
+SMTP_PASS=the-16-letter-app-password
+MAIL_FROM=GB People <notifications@gb-advisory.com>
+```
+Then `sudo systemctl restart gb-prism`. Until SMTP is set, emails wait in the outbox (Admin → Reminders) and nothing is lost.
+
+## CVs in Google Slides
+
+“Open in Google Slides” creates the CV as a Google Slides file in the person’s own Drive. It uses the same Google sign-in client, asking each person once for access to files the portal creates (drive.file — it cannot see anything else). One-time setup in Google Cloud (same project as the sign-in client): **APIs & Services → Library → Google Drive API → Enable**, then **OAuth consent screen → Data access → Add or remove scopes** → tick `.../auth/drive.file` → Save. No new redirect address is needed.
+
 ## Office expenses and company documents
 
 `office.json` names who keeps them (GB decision: Abdullah Abu-Alhija). It is applied only while nobody has been chosen in the portal; after that, partners change it on the Office expenses page. Office administrators, People Ops and partners see both pages; nobody else does. Documents expiring within 60 days, or expired, appear in their inbox. Receipts and scans are stored in the database (PDF or photo).

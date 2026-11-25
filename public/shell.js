@@ -11,8 +11,10 @@ export const PAGES = [
   { key: 'request', re: /^#\/request\//, title: 'Request', icon: 'calendar-check', parent: 'inbox', desc: 'Check the dates and balance, then decide' },
   { key: 'history', re: /^#\/history$/, href: '#/history', title: 'My reviews', icon: 'clipboard-check', group: 'Performance', desc: 'Your reviews across cycles and next year’s plan' },
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', parent: 'history', desc: null },
+  { key: 'active', re: /^#\/active$/, href: '#/active', title: 'Active projects', icon: 'briefcase', group: 'Performance', desc: 'What is running now: dates, client, scope, lead, team and links' },
   { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Projects', icon: 'folder-kanban', group: 'Performance', desc: 'Engagements, deliverables and who contributed what' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', group: 'Performance', desc: 'Examples of AI-assisted work and seat confirmations' },
+  { key: 'messages', re: /^#\/messages(\?.*)?$/, href: '#/messages', title: 'Messages', icon: 'messages-square', group: 'Workspace', desc: 'Private messages with colleagues — one to one or in groups' },
   { key: 'timesheet', re: /^#\/timesheet(\?.*)?$/, href: '#/timesheet', title: 'Timesheet', icon: 'timer', group: 'Workspace', desc: 'Your monthly hours by project — drafted for you from your assignments and leave' },
   { key: 'expenses', re: /^#\/expenses(\?.*)?$/, href: '#/expenses', title: 'Expenses', icon: 'receipt', group: 'Workspace', desc: 'Claim expenses with receipts; approvals and payment' },
   { key: 'letters', re: /^#\/letters$/, href: '#/letters', title: 'Letters & requests', icon: 'mail-check', group: 'Workspace', desc: 'Ask for an experience letter, an internship letter or another HR letter' },
@@ -22,6 +24,8 @@ export const PAGES = [
   { key: 'onboarding', re: /^#\/onboarding$/, href: '#/onboarding', title: 'Onboarding', icon: 'user-plus', group: 'Company', desc: 'What a new joiner receives, reads and signs, step by step' },
   { key: 'office', re: /^#\/office(\?.*)?$/, href: '#/office', title: 'Office expenses', icon: 'building-2', group: 'Company', desc: 'Rent, utilities, kitchen, supplies and fines — kept by the office administrator', show: (me) => me.nav.office },
   { key: 'documents', re: /^#\/documents$/, href: '#/documents', title: 'Company documents', icon: 'file-check-2', group: 'Company', desc: 'Licences, registrations and other government papers, with expiry reminders', show: (me) => me.nav.office },
+  { key: 'claude', re: /^#\/claude$/, href: '#/claude', title: 'Claude accounts', icon: 'bot', group: 'Company', desc: 'Which Claude seats are active, who uses each and what they are working on' },
+  { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', group: 'Admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
   { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', group: 'Company', desc: 'Every client and project GB has worked on, who did it, Drive links, proposals and strategy KPIs' },
   { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', group: 'Workspace', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
   { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', group: 'Workspace', desc: 'Your employment details, benefits and 2026 work — visible to you, People Ops and partners only' },
@@ -69,7 +73,9 @@ export function mountShell({ me, api, onSignOut }) {
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/profile' }, icon('id-card'), 'My profile'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/history' }, icon('clipboard-check'), 'My reviews'),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/timeoff' }, icon('calendar-days'), 'My time off'),
+    me.can_view_as ? h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: () => viewAs(me.view_as ? null : 'employee') }, icon(me.view_as ? 'rotate-ccw' : 'eye'), me.view_as ? 'Back to my own access' : 'See the portal as an employee') : null,
     h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: onSignOut }, icon('log-out', { flip: true }), 'Sign out'));
+  async function viewAs(mode) { await api('/api/view-as', { method: 'POST', body: { mode } }); location.hash = '#/'; location.reload(); }
   const avatarBtn = h('button', { class: 'avatar-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `Account: ${me.name}`, onclick: (e) => { e.stopPropagation(); toggleMenu(); } }, avatar(me));
   const toggleMenu = (force) => { const open = force ?? userMenu.hidden; userMenu.hidden = !open; avatarBtn.setAttribute('aria-expanded', String(open)); if (open) userMenu.querySelector('a,button')?.focus(); };
   document.addEventListener('click', (e) => { if (!userMenu.hidden && !userMenu.contains(e.target)) toggleMenu(false); });
@@ -87,7 +93,9 @@ export function mountShell({ me, api, onSignOut }) {
   const banner = h('div', { id: 'banner', role: 'status', 'aria-live': 'polite' });
   const main = h('main', { id: 'main', tabindex: '-1' });
   const scrim = h('div', { class: 'nav-scrim', onclick: () => shell.classList.remove('nav-open') });
-  const shell = h('div', { class: `app-shell${collapsed ? ' collapsed' : ''}` }, sidebar, h('div', { class: 'shell-main' }, topbar, main), scrim);
+  const shell = h('div', { class: `app-shell${collapsed ? ' collapsed' : ''}` }, sidebar, h('div', { class: 'shell-main' }, topbar,
+    me.view_as ? h('div', { class: 'view-as-bar', role: 'status' }, icon('eye'), h('span', {}, 'You are seeing the portal as an employee. Partner and admin pages are hidden. Things assigned to you by name (your reviews, leave approvals) still show.'),
+      button('Back to my own access', { size: 'sm', iconName: 'rotate-ccw', onClick: () => viewAs(null) })) : null, main), scrim);
   document.body.replaceChildren(h('a', { class: 'skip', href: '#main' }, 'Skip to content'), shell);
 
   function toggleCollapse() {
@@ -105,6 +113,7 @@ export function mountShell({ me, api, onSignOut }) {
     if (c) { c.hidden = !n; c.textContent = String(n); }
     bell.classList.toggle('icon-dot', n > 0);
     bell.setAttribute('aria-label', n ? `${n} item${n === 1 ? '' : 's'} waiting for you` : 'Nothing waiting for you');
+    try { const m = (await api('/api/messages/unread')).unread; const mc = counts.get('messages'); if (mc) { mc.hidden = !m; mc.textContent = String(m); } } catch { /* offline */ }
   }
 
   // ------------------------------------------------------- page template --
@@ -180,9 +189,11 @@ export function mountShell({ me, api, onSignOut }) {
         h('li', {}, 'Changes in reviews save automatically; you will see "Saved" next to the status.'),
         h('li', {}, 'Your ratings, comments and leave reasons are only visible to the people involved.')),
       h('p', { class: 'muted' }, 'Something wrong with your plan, a project or a balance? Contact People Ops.'),
+      button('Take the tour again', { iconName: 'party-popper', onClick: async () => { document.querySelector('.drawer header .btn')?.click(); (await import('/tour.js')).startTour({ api }); } }),
     ] });
   }
 
   refreshInbox();
+  setInterval(() => { if (!document.hidden) refreshInbox(); }, 60_000);
   return { main, banner, setPage, refreshInbox };
 }

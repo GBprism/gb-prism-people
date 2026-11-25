@@ -111,9 +111,10 @@ test('letters, checklists, policies, onboarding: permissions and no pay stored',
   assert.throws(() => wp.setOnboardingDone(db, as(SYN.newbie), SYN.newbie, items.find((i) => i.key === 'contract').id, true), /Not permitted/);
   assert.throws(() => wp.onboardingView(db, as(SYN.peer), SYN.newbie), /Not permitted/);
   // CV updates go through People Ops
-  wp.proposeCvUpdate(db, as(SYN.emp), { bio: 'New summary', date_of_birth: '2000-01-01' });
+  wp.proposeCvUpdate(db, as(SYN.emp), { bio: 'New summary', date_of_birth: '2000-01-01', medical_insurance_status: 'Enrolled', gaps: '' });
   const u = wp.cvUpdates(db, as(SYN.ops)).find((x) => x.user_id === SYN.emp);
-  assert.deepEqual(Object.keys(u.fields), ['bio'], 'only CV facts can be proposed');
+  assert.deepEqual(Object.keys(u.fields).sort(), ['bio', 'date_of_birth'], 'only CV facts and date of birth can be proposed; HR statuses cannot');
+  assert.throws(() => wp.proposeCvUpdate(db, as(SYN.emp), { date_of_birth: '01/01/2000' }), /yyyy-mm-dd/);
   assert.throws(() => wp.decideCvUpdate(db, as(SYN.emp), u.id, { decision: 'apply' }), /Not permitted/);
   wp.decideCvUpdate(db, as(SYN.ops), u.id, { decision: 'apply' });
   assert.equal(db.prepare('SELECT bio FROM employee_profiles WHERE user_id = ?').get(SYN.emp).bio, 'New summary');

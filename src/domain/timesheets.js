@@ -64,6 +64,11 @@ export function monthView(db, actor, userId, month) {
   const entries = db.prepare('SELECT work_date, code, project_id, hours_x100, source FROM timesheet_entries WHERE user_id = ? AND month = ?').all(userId, month);
   const assigned = projectsFor(db, userId, month);
   const extra = db.prepare(`SELECT DISTINCT p.id, p.name, p.kind FROM timesheet_entries e JOIN projects p ON p.id = e.project_id WHERE e.user_id = ? AND e.month = ?`).all(userId, month);
+  // projects the person leads, and projects they picked for this month from the active list
+  const led = db.prepare("SELECT id, name, kind FROM projects WHERE lead_user_id = ? AND kind = 'engagement' AND status = 'active' AND register_status != 'archived'").all(userId);
+  const pinnedIds = JSON.parse(db.prepare('SELECT value_json FROM user_prefs WHERE user_id = ? AND key = ?').get(userId, `ts_projects:${month}`)?.value_json || '[]');
+  const pinned = pinnedIds.map((id) => db.prepare('SELECT id, name, kind FROM projects WHERE id = ? AND tenant_id = ?').get(id, actor.tenantId)).filter(Boolean);
+  extra.push(...led, ...pinned);
   const rows = [...new Map([...assigned, ...extra].map((p) => [`p:${p.id}`, { code: `p:${p.id}`, label: p.name, project_id: p.id, kind: p.kind }])).values(), ...FIXED_CODES];
   const total = (code) => entries.filter((e) => e.code === code).reduce((s, e) => s + e.hours_x100, 0);
   return { user: { id: a.u.id, name: a.u.name }, month, status: st.status, note: st.note || null, submitted_at: st.submitted_at || null,
@@ -99,6 +104,17 @@ export function autofill(db, actor, month, { overwrite = false } = {}) {
     db.prepare("INSERT INTO timesheet_months (user_id, month, tenant_id) VALUES (?,?,?) ON CONFLICT DO NOTHING").run(userId, month, actor.tenantId);
   });
   return { ok: true, filled };
+}
+
+/** Add an active project to the person's timesheet for a month (or remove it if it has no hours). */
+export function pinProject(db, actor, month, projectId, on = true) {
+  if (!isMonth(month)) throw bad('Month must be yyyy-mm');
+  if (on && !db.prepare("SELECT 1 FROM projects WHERE id = ? AND tenant_id = ? AND kind = 'engagement'").get(projectId, actor.tenantId)) throw bad('Unknown project');
+  const key = `ts_projects:${month}`;
+  const cur = new Set(JSON.parse(db.prepare('SELECT value_json FROM user_prefs WHERE user_id = ? AND key = ?').get(actor.id, key)?.value_json || '[]'));
+  if (on) cur.add(projectId); else cur.delete(projectId);
+  db.prepare('INSERT INTO user_prefs (user_id, key, value_json) VALUES (?,?,?) ON CONFLICT(user_id, key) DO UPDATE SET value_json = excluded.value_json').run(actor.id, key, JSON.stringify([...cur]));
+  return { ok: true };
 }
 
 /** Save the person's own hours: [{ date, code, hours }]. Zero hours removes the cell. */

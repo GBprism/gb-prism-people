@@ -73,9 +73,30 @@ function profileBody(p, opts = {}) {
   return [photoHeader(p, opts), gaps, h('div', { class: 'profile-grid' }, emp, personal), companyProfileCard(p), work, more, foot];
 }
 
+const SELF_EDIT = [['public_title', 'Title on my CV'], ['date_of_birth', 'Date of birth (yyyy-mm-dd)'], ['languages', 'Languages'], ['linkedin', 'LinkedIn link'], ['years_experience', 'Total years of experience'],
+  ['bio', 'Profile summary', true], ['education', 'Education (one per line)', true], ['certifications', 'Certifications (one per line)', true], ['industries', 'Industries (separate with ;)', true],
+  ['functions', 'Functional experience (separate with ;)', true], ['cv_projects', 'Previous projects — one per line: Client, Country – what you did', true]];
+
+function editMine(api, p) {
+  const ctl = Object.fromEntries(SELF_EDIT.map(([k, , long]) => [k, long ? textarea({ id: `me_${k}`, rows: k === 'cv_projects' ? 7 : 3 }, p[k] || '') : input({ id: `me_${k}`, value: p[k] || '' })]));
+  openDrawer({ title: 'Edit my profile', iconName: 'pencil', body: h('div', { class: 'stack' }, h('p', { class: 'callout' }, 'Your changes go to People Ops for approval. Once approved they show on your profile, the Team page and your CV slide.'),
+    ...SELF_EDIT.map(([k, label]) => field({ label, id: `me_${k}`, control: ctl[k] }))),
+  footer: (close) => button('Send for approval', { variant: 'primary', iconName: 'send', onClick: async () => {
+    const fields = Object.fromEntries(Object.entries(ctl).filter(([k, c]) => (c.value || '') !== (p[k] || '')).map(([k, c]) => [k, c.value]));
+    if (!Object.keys(fields).length) { toast('Nothing changed', 'danger'); return; }
+    try { await api('/api/cv-updates', { method: 'POST', body: { fields } }); toast('Sent for approval'); close(); dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) { toast(e.message, 'danger'); }
+  } }) });
+}
+
 export async function myProfileScreen({ api }) {
-  const p = await api('/api/profile');
-  const root = h('div', { class: 'profile' }, profileBody(p, { api, canPhoto: true, onChange: () => dispatchEvent(new HashChangeEvent('hashchange')) }));
+  const [p, prefs, updates] = await Promise.all([api('/api/profile'), api('/api/me/prefs').catch(() => ({})), api('/api/cv-updates').catch(() => [])]);
+  const pending = updates.find((u) => u.status === 'pending' && u.user_id === p.user?.id);
+  const email = h('input', { type: 'checkbox', id: 'pref-email', checked: prefs.email_notifications !== false, onchange: async (e) => { await api('/api/me/prefs', { method: 'POST', body: { email_notifications: e.target.checked } }); toast(e.target.checked ? 'Emails on' : 'Emails off'); } });
+  const root = h('div', { class: 'profile' },
+    h('div', { class: 'toolbar' }, h('div', { class: 'row' }, button('Edit my profile', { variant: 'primary', iconName: 'pencil', onClick: () => editMine(api, p) }),
+      pending ? badge('Changes waiting for approval', 'info') : null),
+      h('label', { class: 'check-row', for: 'pref-email' }, email, 'Email me when something needs my action')),
+    profileBody(p, { api, canPhoto: true, onChange: () => dispatchEvent(new HashChangeEvent('hashchange')) }));
   root.modern = true;
   return root;
 }

@@ -181,7 +181,8 @@ function evaluate(db, actor, { userId = actor.id, typeCode, start, end, startPor
   }
   if (approverId === userId) { approverId = backupId; backupId = null; }
   if (!approverId || approverId === userId) blocking.push('No approver configured — ask People Ops');
-  return { type, emp, policy: { version: pol.version, status: pol.status }, calc, blocking, warnings, projected, approverId, backupId };
+  const pm = projectManagerFor(db, actor.tenantId, userId, start, end, approverId);
+  return { type, emp, policy: { version: pol.version, status: pol.status }, calc, blocking, warnings, projected, approverId, backupId, pm };
 }
 
 function halvesCompatible(date, req, other) {
@@ -213,6 +214,23 @@ function coverageWarnings(db, tenantId, userId, start, end) {
   return out;
 }
 
+/**
+ * GB decision (25 Nov 2026): if the person works on a running project during the leave, that project's
+ * lead approves first, then the request goes to GB's leave approver. The lead of the project with the
+ * longest overlap is chosen; nobody approves their own request.
+ */
+export function projectManagerFor(db, tenantId, userId, start, end, finalApprover) {
+  const rows = db.prepare(`SELECT p.id, p.name, p.lead_user_id, a.start_date, a.end_date FROM project_assignments a JOIN projects p ON p.id = a.project_id
+      WHERE a.user_id = ? AND p.tenant_id = ? AND p.kind = 'engagement' AND p.status = 'active' AND p.register_status != 'archived'
+        AND a.status IN ('confirmed','tentative','historical') AND p.lead_user_id IS NOT NULL AND p.lead_user_id NOT IN (?, ?)
+        AND (a.start_date IS NULL OR a.start_date <= ?) AND (a.end_date IS NULL OR a.end_date >= ?)`).all(userId, tenantId, userId, finalApprover || '', end, start);
+  if (!rows.length) return null;
+  const overlap = (r) => { const a = r.start_date && r.start_date > start ? r.start_date : start; const b = r.end_date && r.end_date < end ? r.end_date : end; return Date.parse(b) - Date.parse(a); };
+  const best = rows.sort((x, y) => overlap(y) - overlap(x) || x.name.localeCompare(y.name))[0];
+  const u = db.prepare('SELECT id, name FROM users WHERE id = ? AND active = 1').get(best.lead_user_id);
+  return u ? { id: u.id, name: u.name, project_id: best.id, project: best.name } : null;
+}
+
 export function submitRequest(db, actor, input) {
   return tx(db, () => {
     if (input.userId && input.userId !== actor.id) throw forbid('Requests are submitted by the employee');
@@ -229,6 +247,7 @@ export function submitRequest(db, actor, input) {
       input.startPortion || 'full', input.endPortion || 'full', ev.calc.total_x100, J(ev.calc), input.reason ?? null, input.coverUserId ?? null,
       input.handover ?? null, ev.approverId, ev.backupId, ev.policy.version, J(ev.warnings), input.exceptionReason ? J({ reason: input.exceptionReason, approved: false }) : null,
       input.clientKey ?? null, now());
+    if (ev.pm) db.prepare("UPDATE leave_requests SET stage = 'pm', pm_id = ?, pm_project_id = ? WHERE id = ?").run(ev.pm.id, ev.pm.project_id, id);
     if (ev.type.tracks_balance && ev.type.category !== 'offsite') {
       for (const [y, amt] of Object.entries(ev.calc.byYear)) ledger(db, { tenantId: actor.tenantId, userId: actor.id, typeId: ev.type.id, year: Number(y), kind: 'reservation', amount: -amt, date: input.start, requestId: id, actorId: actor.id, key: `res:${id}:${y}` });
     }
@@ -244,7 +263,17 @@ export function decideRequest(db, actor, id, { decision, note, rowVersion, appro
     if (!r) throw notFound();
     const acc = leaveAccess(db, actor, r);
     if (!acc || acc.relation === 'self') throw forbid(acc?.relation === 'self' ? 'You cannot approve your own request' : undefined);
-    if (acc.relation !== 'approver') throw forbid('Only the assigned approver or backup can decide');
+    if (acc.relation !== 'approver' && acc.relation !== 'pm') throw forbid('Only the assigned approver or backup can decide');
+    if (acc.relation === 'pm' && r.stage !== 'pm') throw conflict('The project manager has already decided — it is with the final approver now');
+    // step 1: the project manager approves → the request moves on to GB's approver (nothing is booked yet)
+    if (r.stage === 'pm' && acc.relation === 'pm' && decision === 'approve') {
+      if (r.state !== 'submitted') throw conflict(`Request is already ${r.state}`);
+      if (rowVersion !== undefined && Number(rowVersion) !== r.row_version) throw conflict('Request changed since you opened it');
+      db.prepare("UPDATE leave_requests SET stage = 'final', pm_decided_by = ?, pm_decided_at = ?, pm_note = ?, row_version = row_version + 1 WHERE id = ?").run(actor.id, now(), note ?? null, id);
+      audit(db, { tenantId: r.tenant_id, actorId: actor.id, action: 'leave.pm_approved', entity: 'leave_request', entityId: id, reason: note });
+      return db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id);
+    }
+    if (acc.relation === 'pm') db.prepare('UPDATE leave_requests SET pm_decided_by = ?, pm_decided_at = ?, pm_note = ? WHERE id = ?').run(actor.id, now(), note ?? null, id);
     const target = decision === 'approve' ? 'approved' : 'declined';
     if (r.state === target && r.decided_by === actor.id) return r; // idempotent retry
     if (r.state !== 'submitted') throw conflict(`Request is already ${r.state}`);
@@ -282,6 +311,7 @@ export function cancelRequest(db, actor, id, { reason } = {}) {
     if (acc.relation === 'self' && r.state === 'approved' && r.start_date <= today) throw forbid('This leave has started; ask your approver to cancel it');
     if (acc.relation !== 'self' && !String(reason || '').trim()) throw bad('A reason is required');
     if (acc.relation === 'ops' && !isOps(actor)) throw forbid();
+    if (acc.relation === 'pm') throw forbid('Only GB’s approver or People Ops can cancel a request');
     const to = r.state === 'submitted' ? 'withdrawn' : 'cancelled';
     const u = db.prepare('UPDATE leave_requests SET state = ?, decision_note = COALESCE(?, decision_note), row_version = row_version + 1 WHERE id = ? AND row_version = ?')
       .run(to, reason ?? null, id, r.row_version);
@@ -394,7 +424,11 @@ export function requestView(db, actor, r) {
   return { id: r.id, user: u, type: t, start_date: r.start_date, end_date: r.end_date, start_portion: r.start_portion, end_portion: r.end_portion,
     chargeable: fmtX100(r.chargeable_x100), breakdown: P(r.breakdown_json), state: r.state, warnings: P(r.warnings_json, []), exception: P(r.exception_json),
     reason: acc.viewReason ? r.reason : undefined, handover: acc.viewReason ? r.handover : undefined, cover_user_id: r.cover_user_id,
-    approver_id: r.approver_id, decided_at: r.decided_at, decision_note: r.decision_note, row_version: r.row_version, can_decide: acc.decide, source: r.source, created_at: r.created_at };
+    approver_id: r.approver_id, decided_at: r.decided_at, decision_note: r.decision_note, row_version: r.row_version, can_decide: acc.decide, source: r.source, created_at: r.created_at,
+    stage: r.stage, pm: r.pm_id ? { id: r.pm_id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(r.pm_id)?.name, project: r.pm_project_id ? db.prepare('SELECT name FROM projects WHERE id = ?').get(r.pm_project_id)?.name : null,
+      decided_at: r.pm_decided_at, note: r.pm_note } : null,
+    can_cancel: ['submitted', 'approved'].includes(r.state) && ['approver', 'ops'].includes(acc.relation),
+    approver_name: r.approver_id ? db.prepare('SELECT name FROM users WHERE id = ?').get(r.approver_id)?.name : null };
 }
 
 /** Team calendar — availability only (no type of leave, reasons or balances). */

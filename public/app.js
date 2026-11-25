@@ -21,6 +21,10 @@ import { policiesScreen } from '/screens/policies.js';
 import { onboardingScreen } from '/screens/onboarding.js';
 import { checklistsScreen } from '/screens/checklists.js';
 import { officeScreen, documentsScreen } from '/screens/office.js';
+import { messagesScreen } from '/screens/messages.js';
+import { activeScreen } from '/screens/active.js';
+import { claudeScreen } from '/screens/claude.js';
+import { reportsScreen } from '/screens/reports.js';
 import { aiExamplesScreen, adminDashboardScreen, adminRosterScreen, adminPolicyScreen, adminRemindersScreen, adminAiScreen, adminAuditScreen } from '/screens/admin.js';
 
 // ------------------------------------------------------------- helpers --
@@ -57,14 +61,17 @@ const routes = [
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
   [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
   [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })],
-  [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
+  [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/active$/, () => activeScreen({ api })], [/^#\/claude$/, () => claudeScreen({ api, me: ME })], [/^#\/reports$/, () => reportsScreen({ api })], [/^#\/messages(?:\?(.*))?$/, (query) => messagesScreen({ api, me: ME, query })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {
   try { ME = await api('/api/me'); } catch (e) { if (e.status === 401) return login(); throw e; }
   SHELL = mountShell({ me: ME, api, onSignOut: async () => { await api('/api/logout', { method: 'POST' }); location.hash = '#/'; location.reload(); } });
   window.addEventListener('hashchange', render);
-  render();
+  await render();
+  // first visit: a short walkthrough (remembered per person; restart from Help)
+  const prefs = await api('/api/me/prefs').catch(() => ({ tour_done: true }));
+  if (!prefs.tour_done && !navigator.webdriver) (await import('/tour.js')).startTour({ api });
 }
 async function render() {
   const hash = location.hash || '#/';

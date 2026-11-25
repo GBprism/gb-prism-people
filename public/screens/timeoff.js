@@ -1,7 +1,7 @@
 // Time off: balances, a request form with a live preview, my requests and team availability.
 // Request decision: one page with the facts an approver needs and the two actions.
 // Same endpoints and rules as before; only the presentation changed.
-import { h, icon, button, badge, card, banner, emptyState, statStrip, dataTable, field, input, select, textarea, toast, confirmModal } from '/ui.js';
+import { h, icon, button, badge, card, banner, emptyState, statStrip, dataTable, field, input, select, textarea, toast, confirmModal, promptModal } from '/ui.js';
 
 const fmt = (s) => (s ? new Date(`${s}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const span = (a, b) => (a === b ? fmt(a) : `${fmt(a)} → ${fmt(b)}`);
@@ -100,7 +100,18 @@ export async function requestScreen({ api, id }) {
       toast(decision === 'approve' ? 'Approved' : 'Declined'); location.hash = '#/inbox';
     } catch (e) { toast(e.message, 'danger'); }
   };
-  root.append(h('header', { class: 'request-head' }, h1, stateBadge(r.state)),
+  const steps = r.pm ? h('ol', { class: 'stepper', 'aria-label': 'Approval steps' },
+    h('li', { class: r.stage === 'final' || r.state !== 'submitted' ? 'done' : null, 'aria-current': r.stage === 'pm' && r.state === 'submitted' ? 'step' : null },
+      h('span', { class: 'step-dot' }, r.stage === 'final' || r.state !== 'submitted' ? icon('check') : '1'), h('span', { class: 'step-label' }, `Project manager — ${r.pm.name}${r.pm.project ? ` (${r.pm.project})` : ''}`)),
+    h('li', { class: r.state === 'approved' ? 'done' : null, 'aria-current': r.stage === 'final' && r.state === 'submitted' ? 'step' : null },
+      h('span', { class: 'step-dot' }, r.state === 'approved' ? icon('check') : '2'), h('span', { class: 'step-label' }, `Final approval — ${r.approver_name || 'GB approver'}`))) : null;
+  const cancel = r.can_cancel ? button('Cancel this request', { variant: 'ghost', iconName: 'circle-x', onClick: async () => {
+    const reason = await promptModal({ title: 'Cancel this request?', text: r.state === 'approved' ? 'The days go back to the balance.' : 'It is withdrawn and nothing is deducted.', label: 'Reason (shown to the employee)', confirmLabel: 'Cancel request', tone: 'danger' });
+    if (!reason) return;
+    try { await api(`/api/leave/requests/${id}/cancel`, { method: 'POST', body: { reason } }); toast('Request cancelled'); location.hash = '#/inbox'; } catch (e) { toast(e.message, 'danger'); }
+  } }) : null;
+  root.append(h('header', { class: 'request-head' }, h1, stateBadge(r.state), cancel), steps,
+    r.pm?.note ? banner({ tone: 'info', title: `${r.pm.name} (project manager)`, text: r.pm.note }) : null,
     r.warnings.length ? banner({ tone: 'warning', title: 'Warnings', text: r.warnings.join(' · ') }) : null,
     r.exception ? banner({ tone: 'warning', title: 'Exception requested', text: r.exception.reason }) : null,
     h('div', { class: 'profile-grid' },

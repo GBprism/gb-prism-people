@@ -1,7 +1,7 @@
 // Timesheet: one month, one row per day, one column per project / time code. The month drafts
 // itself from assignments, holidays and approved leave; the person corrects and submits.
 // Partners / People Ops see man-hours per project and approve submitted months.
-import { h, icon, button, badge, card, banner, emptyState, filterChips, toast, promptModal, statStrip } from '/ui.js';
+import { h, icon, button, badge, card, banner, emptyState, filterChips, toast, promptModal, statStrip, select } from '/ui.js';
 
 const H = (x100) => (x100 ? (x100 / 100).toFixed(x100 % 100 ? 2 : 0).replace(/0$/, '') : '');
 const thisMonth = () => new Date().toISOString().slice(0, 7);
@@ -48,6 +48,10 @@ export async function timesheetScreen({ api, me, query = '' }) {
           tot);
       })),
       h('tfoot', {}, h('tr', {}, h('th', { scope: 'row' }, 'Month'), v.rows.map((r) => h('td', { class: 'num' }, h('strong', {}, H(r.total_x100) || '0'))), h('td', { class: 'num' }, h('strong', {}, H(v.totals.hours_x100) || '0')))));
+    const active = await api('/api/active-projects').catch(() => []);
+    const shown = new Set(v.rows.filter((r) => r.project_id).map((r) => r.project_id));
+    const pick = v.can.edit ? select([['', 'Add a project from the active list…'], ...active.filter((p) => !shown.has(p.id)).map((p) => [p.id, `${p.name}${p.lead_name ? ` — ${p.lead_name}` : ''}`])],
+      { 'aria-label': 'Add a project to this month', class: 'select select-sm ts-pick', onchange: async (e) => { if (!e.target.value) return; await flush(); await api(`/api/timesheets/me/${month}/projects`, { method: 'POST', body: { projectId: e.target.value } }); toast('Project added'); draw(); } }) : null;
     return [
       statStrip([{ iconName: 'timer', value: H(v.totals.hours_x100) || '0', label: 'hours logged' }, { iconName: 'calendar-days', value: H(v.totals.capacity_x100) || '0', label: 'working hours this month' },
         { iconName: 'briefcase', value: String(v.rows.filter((r) => r.project_id && r.total_x100).length), label: 'projects' }]),
@@ -55,7 +59,7 @@ export async function timesheetScreen({ api, me, query = '' }) {
       card({ title: 'Hours by day', iconName: 'table', actions: [badge(label, tone), state,
         v.can.edit ? button('Redraft from assignments', { iconName: 'refresh-cw', onClick: async () => { await flush(); await api(`/api/timesheets/me/${month}/autofill`, { method: 'POST', body: { overwrite: true } }); toast('Month redrafted'); draw(); } }) : null,
         v.can.edit ? button('Submit month', { variant: 'primary', iconName: 'send', onClick: async () => { await flush(); try { await api(`/api/timesheets/me/${month}/submit`, { method: 'POST' }); toast('Submitted'); draw(); } catch (e) { toast(e.message, 'danger'); } } }) : null],
-      body: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Drafted for you: 8 hours per working day, split across the projects you are assigned to, minus public holidays and approved leave. Correct the hours, then submit at month end.'),
+      body: h('div', { class: 'stack' }, h('div', { class: 'toolbar' }, h('p', { class: 'muted' }, 'Drafted for you from your assignments, minus public holidays and approved leave. Add any active project you worked on, correct the hours, then submit at month end.'), pick),
         v.rows.length ? h('div', { class: 'table-wrap' }, table) : emptyState({ iconName: 'timer', title: 'No time codes' })) }),
     ];
   }

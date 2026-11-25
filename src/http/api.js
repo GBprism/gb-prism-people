@@ -15,6 +15,11 @@ import * as ts from '../domain/timesheets.js';
 import * as wp from '../domain/workplace.js';
 import { cvDeck } from '../domain/cv.js';
 import * as office from '../domain/office.js';
+import * as ev from '../domain/events.js';
+import * as msg from '../domain/messages.js';
+import * as gym from '../domain/gym.js';
+import * as claude from '../domain/claude.js';
+import { reports } from '../domain/reports.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances, reconcile, compareSnapshots } from '../imports/leaveboard.js';
 import { previewPlans, applyPlans, previewHistory, applyHistory } from '../imports/pms.js';
 import { previewGbForms, applyGbForms } from '../imports/gbform.js';
@@ -33,8 +38,18 @@ export function buildApi(db) {
     const reviews = db.prepare('SELECT COUNT(*) n FROM plans WHERE reviewer_id = ?').get(actor.id).n;
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
-    return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title,
+    return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, google_slides: !!(process.env.GOOGLE_CLIENT_ID && process.env.BASE_URL), can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
       nav: { inbox: true, office: office.canOffice(db, actor), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+  });
+
+  // personal settings: email notifications on/off, walkthrough seen
+  r.get('/api/me/prefs', ({ actor }) => Object.fromEntries(db.prepare("SELECT key, value_json FROM user_prefs WHERE user_id = ? AND key NOT LIKE 'ts_projects:%'").all(actor.id).map((x) => [x.key, JSON.parse(x.value_json)])));
+  r.post('/api/me/prefs', ({ actor, body }) => {
+    for (const [k, v] of Object.entries(body || {})) {
+      if (!['email_notifications', 'tour_done'].includes(k)) throw bad('Unknown setting');
+      db.prepare('INSERT INTO user_prefs (user_id, key, value_json) VALUES (?,?,?) ON CONFLICT(user_id, key) DO UPDATE SET value_json = excluded.value_json').run(actor.id, k, JSON.stringify(!!v));
+    }
+    return { ok: true };
   });
 
   // directory (names only) for pickers such as "who covers your work"
@@ -92,7 +107,12 @@ export function buildApi(db) {
       items.push({ type: 'feedback', kind: p.label, title: p.emp, link: `#/review/${p.id}`, state: 'Input requested' });
     if (has(actor, 'partner')) for (const p of db.prepare(`SELECT p.*, u.name emp, c.name cycle, c.calibration_due due FROM plans p JOIN users u ON u.id = p.user_id JOIN cycles c ON c.id = p.cycle_id
         WHERE p.tenant_id = ? AND p.partner_id = ? AND p.state = 'partner_calibration'`).all(actor.tenantId, actor.id)) items.push({ type: 'calibration', kind: 'Calibrate', title: `${p.emp} — ${p.cycle}`, due: p.due, link: `#/review/${p.id}`, state: 'Partner calibration' });
-    for (const x of db.prepare("SELECT * FROM leave_requests WHERE tenant_id = ? AND state = 'submitted' AND (approver_id = ? OR backup_approver_id = ?) AND user_id != ?").all(actor.tenantId, actor.id, actor.id, actor.id)) {
+    for (const x of db.prepare("SELECT * FROM leave_requests WHERE tenant_id = ? AND state = 'submitted' AND stage = 'pm' AND pm_id = ? AND user_id != ?").all(actor.tenantId, actor.id, actor.id)) {
+      const v = leave.requestView(db, actor, x);
+      items.push({ type: 'request', kind: 'Time off — project manager', title: `${v.user.name} — ${v.type.name} ${v.start_date}${v.end_date !== v.start_date ? ' → ' + v.end_date : ''} (${v.chargeable} d)`, due: v.start_date, link: `#/request/${x.id}`, state: `Your approval first${v.pm?.project ? ` · ${v.pm.project}` : ''}`, warnings: v.warnings.length });
+    }
+    // GB's approver sees a request once its project manager has approved it (or when there is none)
+    for (const x of db.prepare("SELECT * FROM leave_requests WHERE tenant_id = ? AND state = 'submitted' AND stage = 'final' AND (approver_id = ? OR backup_approver_id = ?) AND user_id != ?").all(actor.tenantId, actor.id, actor.id, actor.id)) {
       // the backup sees a request only when the approver is away or it has waited too long
       const asBackup = x.approver_id !== actor.id;
       const why = asBackup ? leave.waitingForBackup(db, actor.tenantId, x) : null;
@@ -208,7 +228,7 @@ export function buildApi(db) {
       projected: ev.projected && Object.fromEntries(Object.entries(ev.projected).map(([y, p]) => [y, { before: fmtX100(p.before_x100), after: fmtX100(p.after_x100) }])),
       blocking: ev.blocking, warnings: ev.warnings, policy: ev.policy, approver: db.prepare('SELECT name FROM users WHERE id = ?').get(ev.approverId || '')?.name ?? null };
   });
-  r.post('/api/leave/requests', ({ actor, body }) => leave.requestView(db, actor, leave.submitRequest(db, actor, body)));
+  r.post('/api/leave/requests', ({ actor, body }) => { const x = leave.submitRequest(db, actor, body); ev.leaveChanged(db, x); return leave.requestView(db, actor, x); });
   r.get('/api/leave/requests', ({ actor, ctx }) => {
     const scope = q(ctx, 'scope') || 'mine';
     const rows = scope === 'approvals'
@@ -221,11 +241,12 @@ export function buildApi(db) {
     const x = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(params.id);
     const v = x && leave.requestView(db, actor, x);
     if (!v) throw notFound();
-    if (v.can_decide) v.balances = leave.balancesForUser(db, actor, x.user_id, Number(x.start_date.slice(0, 4))).filter((b) => b.tracks_balance).map((b) => ({ name: b.name, posted: fmtX100(b.posted_x100), pending: fmtX100(b.pending_x100) }));
+    // balances only for GB's approver; a project manager sees the dates, not the person's balance
+    if (v.can_decide && x.pm_id !== actor.id) v.balances = leave.balancesForUser(db, actor, x.user_id, Number(x.start_date.slice(0, 4))).filter((b) => b.tracks_balance).map((b) => ({ name: b.name, posted: fmtX100(b.posted_x100), pending: fmtX100(b.pending_x100) }));
     return v;
   });
-  r.post('/api/leave/requests/:id/decide', ({ actor, params, body }) => leave.requestView(db, actor, leave.decideRequest(db, actor, params.id, body)));
-  r.post('/api/leave/requests/:id/cancel', ({ actor, params, body }) => leave.requestView(db, actor, leave.cancelRequest(db, actor, params.id, body)));
+  r.post('/api/leave/requests/:id/decide', ({ actor, params, body }) => { const x = leave.decideRequest(db, actor, params.id, body); ev.leaveChanged(db, x); return leave.requestView(db, actor, x); });
+  r.post('/api/leave/requests/:id/cancel', ({ actor, params, body }) => { const x = leave.cancelRequest(db, actor, params.id, body); if (x.user_id !== actor.id) ev.leaveChanged(db, x); return leave.requestView(db, actor, x); });
   r.get('/api/leave/calendar', ({ actor, ctx }) => leave.teamCalendar(db, actor, { from: q(ctx, 'from') || todayIn(), to: q(ctx, 'to') || todayIn() }));
   r.post('/api/leave/adjust', ({ actor, body }) => leave.adjustBalance(db, actor, { ...body, amountX100: toX100(body.amount) }));
   r.post('/api/leave/carryover', ({ actor, body }) => leave.runCarryover(db, actor, body));
@@ -355,23 +376,26 @@ export function buildApi(db) {
   r.post('/api/expenses/:id/lines/:line/delete', ({ actor, params }) => exp.removeLine(db, actor, params.id, params.line));
   r.post('/api/expenses/:id/lines/:line/receipt', ({ actor, params, raw, ctx }) => exp.attachReceipt(db, actor, params.id, params.line, raw, ctx.url.searchParams.get('name')), { raw: true });
   r.get('/api/expenses/:id/lines/:line/receipt', ({ actor, params }) => exp.receipt(db, actor, params.id, params.line));
-  r.post('/api/expenses/:id/submit', ({ actor, params }) => exp.submitClaim(db, actor, params.id));
-  r.post('/api/expenses/:id/decide', ({ actor, params, body }) => exp.decideClaim(db, actor, params.id, body));
-  r.post('/api/expenses/:id/paid', ({ actor, params }) => exp.markPaid(db, actor, params.id));
+  r.post('/api/expenses/:id/submit', ({ actor, params }) => { const o = exp.submitClaim(db, actor, params.id); ev.expenseChanged(db, db.prepare('SELECT * FROM expense_claims WHERE id = ?').get(params.id)); return o; });
+  r.post('/api/expenses/:id/decide', ({ actor, params, body }) => { const o = exp.decideClaim(db, actor, params.id, body); ev.expenseChanged(db, db.prepare('SELECT * FROM expense_claims WHERE id = ?').get(params.id)); return o; });
+  r.post('/api/expenses/:id/cancel', ({ actor, params, body }) => { const o = exp.cancelClaim(db, actor, params.id, body); ev.expenseChanged(db, db.prepare('SELECT * FROM expense_claims WHERE id = ?').get(params.id)); return o; });
+  r.post('/api/expenses/:id/paid', ({ actor, params }) => { const o = exp.markPaid(db, actor, params.id); ev.expenseChanged(db, db.prepare('SELECT * FROM expense_claims WHERE id = ?').get(params.id)); return o; });
 
   // ---------------------------------------------------------- timesheets --
   r.get('/api/timesheets/:user/:month', ({ actor, params }) => ts.monthView(db, actor, params.user === 'me' ? actor.id : params.user, params.month));
   r.post('/api/timesheets/me/:month/autofill', ({ actor, params, body }) => ts.autofill(db, actor, params.month, { overwrite: !!body.overwrite }));
+  r.post('/api/timesheets/me/:month/projects', ({ actor, params, body }) => ts.pinProject(db, actor, params.month, body.projectId, body.on !== false));
+  r.get('/api/active-projects', ({ actor }) => proj.activeProjects(db, actor));
   r.post('/api/timesheets/me/:month/entries', ({ actor, params, body }) => ts.saveEntries(db, actor, params.month, body.cells || []));
-  r.post('/api/timesheets/me/:month/submit', ({ actor, params }) => ts.submitMonth(db, actor, params.month));
+  r.post('/api/timesheets/me/:month/submit', ({ actor, params }) => { const o = ts.submitMonth(db, actor, params.month); ev.timesheetSubmitted(db, actor.tenantId, actor.id, params.month); return o; });
   r.post('/api/timesheets/:user/:month/decide', ({ actor, params, body }) => ts.decideMonth(db, actor, params.user, params.month, body));
   r.get('/api/timesheet-report/:month', ({ actor, params }) => ts.monthReport(db, actor, params.month));
 
   // ------------------------------------------- letters, checklists, policies, onboarding, brand, CVs --
   r.get('/api/letters', ({ actor }) => wp.listLetters(db, actor));
-  r.post('/api/letters', ({ actor, body }) => wp.requestLetter(db, actor, body));
+  r.post('/api/letters', ({ actor, body }) => { const o = wp.requestLetter(db, actor, body); ev.letterRequested(db, db.prepare('SELECT * FROM letter_requests WHERE id = ?').get(o.id)); return o; });
   r.get('/api/letters/:id/draft', ({ actor, params }) => wp.letterDraft(db, actor, params.id));
-  r.post('/api/letters/:id/decide', ({ actor, params, body }) => wp.decideLetter(db, actor, params.id, body));
+  r.post('/api/letters/:id/decide', ({ actor, params, body }) => { const o = wp.decideLetter(db, actor, params.id, body); ev.letterDecided(db, db.prepare('SELECT * FROM letter_requests WHERE id = ?').get(params.id)); return o; });
   r.post('/api/letters/:id/cancel', ({ actor, params }) => wp.cancelLetter(db, actor, params.id));
   r.get('/api/checklists', ({ actor }) => wp.checklistsView(db, actor));
   r.post('/api/deliverables/:id/submit', ({ actor, params, body }) => wp.submitDeliverable(db, actor, params.id, body));
@@ -385,7 +409,7 @@ export function buildApi(db) {
   const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   r.get('/api/cv/:id', async ({ actor, params }) => { const d = await cvDeck(db, actor, params.id === 'all' ? null : params.id === 'me' ? actor.id : params.id); return { __raw: d.buffer, contentType: PPTX, filename: d.filename }; });
   r.get('/api/cv-updates', ({ actor }) => wp.cvUpdates(db, actor));
-  r.post('/api/cv-updates', ({ actor, body }) => wp.proposeCvUpdate(db, actor, body.fields || {}));
+  r.post('/api/cv-updates', ({ actor, body }) => { const o = wp.proposeCvUpdate(db, actor, body.fields || {}); ev.cvUpdateProposed(db, actor.tenantId, actor.id); return o; });
   r.post('/api/cv-updates/:id/decide', ({ actor, params, body }) => wp.decideCvUpdate(db, actor, params.id, body));
   r.post('/api/projects/:id/links', ({ actor, params, body }) => proj.setProjectLinks(db, actor, params.id, body));
   // ------------------------------------------- office costs and company documents --
@@ -403,6 +427,26 @@ export function buildApi(db) {
   r.post('/api/documents/:id/archive', ({ actor, params }) => office.archiveDocument(db, actor, params.id));
   r.post('/api/documents/:id/file', ({ actor, params, raw, ctx }) => office.attachDocumentFile(db, actor, params.id, raw, ctx.url.searchParams.get('name')), { raw: true });
   r.get('/api/documents/:id/file', ({ actor, params }) => office.documentFile(db, actor, params.id));
+  r.get('/api/reports', ({ actor, ctx }) => reports(db, actor, { year: ctx.url.searchParams.get('year') }));
+  // ------------------------------------------------------ Claude accounts --
+  r.get('/api/claude-accounts', ({ actor }) => { if (has(actor, 'partner') || isOps(actor)) claude.seedFromAttributions(db, actor); return claude.claudeView(db, actor); });
+  r.post('/api/claude-accounts', ({ actor, body }) => claude.saveAccount(db, actor, null, body));
+  r.patch('/api/claude-accounts/:id', ({ actor, params, body }) => claude.saveAccount(db, actor, params.id, body));
+  r.post('/api/claude-accounts/:id/my-work', ({ actor, params, body }) => claude.setMyWork(db, actor, params.id, body));
+  // -------------------------------------------------------- gym allowance --
+  r.get('/api/gym', ({ actor }) => gym.gymView(db, actor));
+  r.post('/api/gym', ({ actor, raw, ctx }) => { const q = (k) => ctx.url.searchParams.get(k); const g = gym.submitGym(db, actor, { gym_name: q('gym'), valid_from: q('from'), valid_to: q('to') }, raw, q('name')); ev.gymSubmitted(db, g); return { id: g.id }; }, { raw: true });
+  r.post('/api/gym/:id/decide', ({ actor, params, body }) => { const g = gym.decideGym(db, actor, params.id, body); ev.gymDecided(db, g); return { ok: true }; });
+  r.get('/api/gym/:id/file', ({ actor, params }) => gym.gymFile(db, actor, params.id));
+  // ----------------------------------------------------------- messages --
+  r.get('/api/messages', ({ actor }) => ({ conversations: msg.listConversations(db, actor), unread: msg.unreadCount(db, actor) }));
+  r.get('/api/messages/unread', ({ actor }) => ({ unread: msg.unreadCount(db, actor) }));
+  r.post('/api/messages/direct', ({ actor, body }) => msg.directWith(db, actor, body.userId));
+  r.post('/api/messages/groups', ({ actor, body }) => msg.createGroup(db, actor, body));
+  r.get('/api/messages/:id', ({ actor, params, ctx }) => msg.readMessages(db, actor, params.id, { after: ctx.url.searchParams.get('after') }));
+  r.post('/api/messages/:id', ({ actor, params, body }) => { const o = msg.sendMessage(db, actor, params.id, body.text); ev.messageSent(db, params.id, actor.id); return o; });
+  r.post('/api/messages/:id/members', ({ actor, params, body }) => msg.addMembers(db, actor, params.id, body.userIds || []));
+  r.post('/api/messages/:id/leave', ({ actor, params }) => msg.leaveConversation(db, actor, params.id));
   r.post('/api/plan-items/:id/strategy', ({ actor, params, body }) => lib.linkPlanItem(db, actor, params.id, body.kpiIds || []));
   r.post('/api/projects/:id/lead', ({ actor, params, body }) => proj.setProjectLead(db, actor, params.id, body.userId));
   r.post('/api/projects/:id/approve', ({ actor, params }) => { proj.approveProject(db, actor, params.id); return { ok: true }; });
