@@ -335,6 +335,77 @@ export const MIGRATIONS = [
      tenant_id TEXT NOT NULL, linked_by TEXT, linked_at TEXT NOT NULL, PRIMARY KEY (plan_item_id, kpi_id));
    CREATE INDEX engagements_client ON engagements(client_id);
    CREATE INDEX proposals_client ON proposals(client_id);`,
+  // ---- 016 workplace: expenses, timesheets, letters, checklists, policies, onboarding, brand, CV updates
+  `CREATE TABLE files (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_id TEXT REFERENCES users(id), purpose TEXT NOT NULL,
+     filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL);
+   CREATE TABLE expense_claims (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL,
+     period_from TEXT, period_to TEXT, currency TEXT NOT NULL DEFAULT 'JOD',
+     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected','paid')),
+     total_x100 INTEGER NOT NULL DEFAULT 0, submitted_at TEXT, approver_id TEXT REFERENCES users(id),
+     decided_by TEXT, decided_at TEXT, decision_note TEXT, paid_by TEXT, paid_at TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE expense_lines (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, claim_id TEXT NOT NULL REFERENCES expense_claims(id) ON DELETE CASCADE,
+     spent_on TEXT NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, project_id TEXT REFERENCES projects(id),
+     project_text TEXT, chargeable INTEGER NOT NULL DEFAULT 0, receipt_amount_x100 INTEGER NOT NULL CHECK (receipt_amount_x100 > 0),
+     receipt_currency TEXT NOT NULL, fx_rate TEXT NOT NULL DEFAULT '1', amount_x100 INTEGER NOT NULL CHECK (amount_x100 > 0),
+     receipt_file_id TEXT REFERENCES files(id), position INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE timesheet_entries (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), month TEXT NOT NULL,
+     work_date TEXT NOT NULL, code TEXT NOT NULL, project_id TEXT REFERENCES projects(id), hours_x100 INTEGER NOT NULL CHECK (hours_x100 >= 0),
+     source TEXT NOT NULL DEFAULT 'manual', UNIQUE(user_id, work_date, code));
+   CREATE TABLE timesheet_months (
+     user_id TEXT NOT NULL REFERENCES users(id), month TEXT NOT NULL, tenant_id TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','submitted','approved','returned')),
+     submitted_at TEXT, decided_by TEXT, decided_at TEXT, note TEXT, PRIMARY KEY (user_id, month));
+   CREATE TABLE letter_templates (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT, language TEXT,
+     fields_json TEXT NOT NULL DEFAULT '[]', body TEXT NOT NULL, signatory TEXT, has_compensation INTEGER NOT NULL DEFAULT 0,
+     source_url TEXT, active INTEGER NOT NULL DEFAULT 1, UNIQUE(tenant_id, key));
+   CREATE TABLE letter_requests (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), template_key TEXT,
+     kind TEXT NOT NULL, addressee TEXT, purpose TEXT, language TEXT NOT NULL DEFAULT 'en', needed_by TEXT,
+     status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','issued','rejected','cancelled')),
+     decided_by TEXT, decided_at TEXT, note TEXT, issued_fields_json TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE checklists (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('general','specific')),
+     deliverable_type TEXT, title TEXT NOT NULL, title_ar TEXT, items_json TEXT NOT NULL, source_name TEXT, source_url TEXT,
+     position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, key));
+   CREATE TABLE deliverable_checks (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, deliverable_id TEXT NOT NULL REFERENCES deliverables(id),
+     user_id TEXT NOT NULL REFERENCES users(id), checklist_keys TEXT NOT NULL, items_checked INTEGER NOT NULL,
+     note TEXT, drive_url TEXT, confirmed_at TEXT NOT NULL);
+   ALTER TABLE deliverables ADD COLUMN deliverable_type TEXT;
+   ALTER TABLE deliverables ADD COLUMN submitted_by TEXT;
+   ALTER TABLE deliverables ADD COLUMN submitted_at TEXT;
+   CREATE TABLE policies (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT,
+     version TEXT, effective TEXT, summary TEXT, rules_json TEXT NOT NULL DEFAULT '[]', applies_to TEXT, source_url TEXT,
+     requires_ack INTEGER NOT NULL DEFAULT 1, UNIQUE(tenant_id, key));
+   CREATE TABLE policy_acks (
+     policy_id TEXT NOT NULL REFERENCES policies(id), user_id TEXT NOT NULL REFERENCES users(id), version TEXT,
+     acked_at TEXT NOT NULL, PRIMARY KEY (policy_id, user_id));
+   CREATE TABLE onboarding_items (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, title TEXT NOT NULL, title_ar TEXT, purpose TEXT,
+     stage TEXT NOT NULL, owner TEXT NOT NULL, action TEXT NOT NULL, source_url TEXT, position INTEGER NOT NULL DEFAULT 0,
+     UNIQUE(tenant_id, key));
+   CREATE TABLE onboarding_progress (
+     user_id TEXT NOT NULL REFERENCES users(id), item_id TEXT NOT NULL REFERENCES onboarding_items(id), tenant_id TEXT NOT NULL,
+     done_by TEXT, done_at TEXT NOT NULL, PRIMARY KEY (user_id, item_id));
+   CREATE TABLE brand_files (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, file_id TEXT NOT NULL REFERENCES files(id), label TEXT NOT NULL,
+     variant TEXT, orientation TEXT, position INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id, label));
+   CREATE TABLE cv_updates (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), fields_json TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied','rejected')),
+     decided_by TEXT, decided_at TEXT, note TEXT, created_at TEXT NOT NULL);
+   ALTER TABLE employee_profiles ADD COLUMN languages TEXT;
+   ALTER TABLE employee_profiles ADD COLUMN linkedin TEXT;
+   ALTER TABLE projects ADD COLUMN chat_url TEXT;
+   ALTER TABLE projects ADD COLUMN meet_url TEXT;
+   CREATE INDEX timesheet_user_month ON timesheet_entries(user_id, month);
+   CREATE INDEX expense_lines_claim ON expense_lines(claim_id);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

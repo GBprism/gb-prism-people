@@ -13,7 +13,14 @@ export const PAGES = [
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', parent: 'history', desc: null },
   { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Projects', icon: 'folder-kanban', group: 'Performance', desc: 'Engagements, deliverables and who contributed what' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', group: 'Performance', desc: 'Examples of AI-assisted work and seat confirmations' },
-  { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', group: 'Workspace', desc: 'Every client and project GB has worked on, who did it, Drive links, proposals and strategy KPIs' },
+  { key: 'timesheet', re: /^#\/timesheet(\?.*)?$/, href: '#/timesheet', title: 'Timesheet', icon: 'timer', group: 'Workspace', desc: 'Your monthly hours by project — drafted for you from your assignments and leave' },
+  { key: 'expenses', re: /^#\/expenses(\?.*)?$/, href: '#/expenses', title: 'Expenses', icon: 'receipt', group: 'Workspace', desc: 'Claim expenses with receipts; approvals and payment' },
+  { key: 'letters', re: /^#\/letters$/, href: '#/letters', title: 'Letters & requests', icon: 'mail-check', group: 'Workspace', desc: 'Ask for an experience letter, an internship letter or another HR letter' },
+  { key: 'checklists', re: /^#\/checklists$/, href: '#/checklists', title: 'Checklists', icon: 'list-todo', group: 'Company', desc: 'Quality checklists every deliverable passes before it is submitted' },
+  { key: 'company', re: /^#\/company$/, href: '#/company', title: 'Company profile', icon: 'presentation', group: 'Company', desc: 'The latest company profile, everyone’s CV in GB format, and the brand kit' },
+  { key: 'policies', re: /^#\/policies$/, href: '#/policies', title: 'Policies', icon: 'book-open-check', group: 'Company', desc: 'GB policies, including the AI and Claude usage rules — read and acknowledge' },
+  { key: 'onboarding', re: /^#\/onboarding$/, href: '#/onboarding', title: 'Onboarding', icon: 'user-plus', group: 'Company', desc: 'What a new joiner receives, reads and signs, step by step' },
+  { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', group: 'Company', desc: 'Every client and project GB has worked on, who did it, Drive links, proposals and strategy KPIs' },
   { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', group: 'Workspace', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
   { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', group: 'Workspace', desc: 'Your employment details, benefits and 2026 work — visible to you, People Ops and partners only' },
   { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', group: 'Admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
@@ -25,7 +32,7 @@ export const PAGES = [
   { key: 'admin-ai', re: /^#\/admin\/ai$/, href: '#/admin/ai', title: 'AI adoption', icon: 'bot', group: 'Admin', desc: 'Gemini and Claude usage, kept apart from ratings', show: (me) => me.nav.admin },
   { key: 'admin-audit', re: /^#\/admin\/audit$/, href: '#/admin/audit', title: 'Audit log', icon: 'scroll-text', group: 'Admin', desc: 'Who did what, and when', show: (me) => me.nav.admin },
 ];
-const GROUPS = ['Workspace', 'Performance', 'Admin'];
+const GROUPS = ['Workspace', 'Performance', 'Company', 'Admin'];
 export const pageFor = (hash) => PAGES.find((p) => p.re.test(hash)) || PAGES[0];
 const visible = (me) => PAGES.filter((p) => p.group && (!p.show || p.show(me)));
 /** Apps the person may open, grouped as in the sidebar (used by the Home launcher). */
@@ -70,6 +77,7 @@ export function mountShell({ me, api, onSignOut }) {
     button('', { variant: 'ghost', iconName: 'menu', ariaLabel: 'Open menu', onClick: () => shell.classList.add('nav-open') }), crumbs,
     h('div', { class: 'topbar-actions' },
       h('button', { class: 'search-trigger', type: 'button', onclick: () => openPalette() }, icon('search'), h('span', { class: 'label' }, 'Search or jump to…'), h('kbd', {}, navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl K')),
+      h('a', { class: 'btn btn-ghost btn-icon', href: 'https://meet.google.com/new', target: '_blank', rel: 'noopener', 'aria-label': 'Start a Google Meet', title: 'Start a Google Meet' }, icon('video')),
       bell, button('', { variant: 'ghost', iconName: 'circle-help', ariaLabel: 'Help', title: 'Help', onClick: () => openHelp() }),
       h('div', { class: 'menu-anchor' }, avatarBtn, userMenu)));
   topbar.firstChild.classList.add('mobile-only');

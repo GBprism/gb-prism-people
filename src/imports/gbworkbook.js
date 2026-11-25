@@ -104,7 +104,7 @@ export async function parseGbWorkbook(buffer) {
 
 const STATUS = (s) => (/^confirmed/i.test(s) ? 'confirmed' : /change/i.test(s) ? 'change_requested' : 'draft');
 
-export function applyGbWorkbook(db, actor, parsed, { cycleId, year = 2026, dry = false } = {}) {
+export function applyGbWorkbook(db, actor, parsed, { cycleId, year = 2026, dry = false, titleRenames = {} } = {}) {
   const users = db.prepare('SELECT id, name FROM users WHERE tenant_id = ? AND active = 1').all(actor.tenantId)
     .map((u) => ({ ...u, aliases: db.prepare('SELECT alias FROM identity_aliases WHERE user_id = ?').all(u.id).map((a) => a.alias) }));
   const match = nameMatcher(users);
@@ -116,6 +116,7 @@ export function applyGbWorkbook(db, actor, parsed, { cycleId, year = 2026, dry =
       const u = match(p.name);
       if (!u) { report.skipped.push(`Profile: ${p.name} — not on the roster (left or excluded)`); continue; }
       alias(u, p.name);
+      if (p.level && titleRenames[p.level]) p.level = titleRenames[p.level]; // GB decisions on job titles win over the workbook
       const { name, hire_date, probation_end, ...fields } = p;
       updateProfile(db, actor, u.id, fields, { source: SOURCE });
       const notes = [];
@@ -123,7 +124,10 @@ export function applyGbWorkbook(db, actor, parsed, { cycleId, year = 2026, dry =
       if (emp) {
         if (hire_date && emp.hire_date !== hire_date) { db.prepare('UPDATE employments SET hire_date = ? WHERE id = ?').run(hire_date, emp.id); notes.push(`joining date ${emp.hire_date || '—'} → ${hire_date}`); }
         if (probation_end && emp.probation_end !== probation_end) { db.prepare('UPDATE employments SET probation_end = ? WHERE id = ?').run(probation_end, emp.id); notes.push(`probation end → ${probation_end}`); }
-        if (p.level && emp.title !== p.level) {
+        if (p.level && emp.title !== p.level && titleRenames[emp.title] === p.level) {
+          db.prepare('UPDATE employments SET title = ? WHERE id = ?').run(p.level, emp.id); // a renamed title, not a promotion
+          notes.push(`title renamed ${emp.title} → ${p.level}`);
+        } else if (p.level && emp.title !== p.level) {
           db.prepare("UPDATE employments SET effective_to = date('now','-1 day') WHERE id = ?").run(emp.id);
           db.prepare(`INSERT INTO employments (id, tenant_id, user_id, title, role_family, manager_id, backup_approver_id, country, hire_date, probation_end, effective_from)
               SELECT ?, tenant_id, user_id, ?, role_family, manager_id, backup_approver_id, country, hire_date, probation_end, date('now') FROM employments WHERE id = ?`).run(uid('emp_'), p.level, emp.id);
@@ -355,4 +359,27 @@ export function applyServiceLines(db, actor, file, SERVICE_LINES) {
     db.prepare('UPDATE projects SET service_line = ? WHERE id = ?').run(line, p.id); out.push(`${name} → ${line}`);
   }
   return out;
+}
+
+/**
+ * GB decisions renaming a job title for everyone who holds it, e.g. { "Business Analyst (Grade 1)": "Consultant" }.
+ * A correction, not a promotion: the current employment row and the profile level change in place (audited).
+ */
+export function applyTitleRenames(db, actor, renames = {}) {
+  const out = [];
+  tx(db, () => {
+    for (const [from, to] of Object.entries(renames)) {
+      if (!from || !to || from === to) continue;
+      const rows = db.prepare(`SELECT e.id, e.user_id, u.name FROM employments e JOIN users u ON u.id = e.user_id
+          WHERE e.tenant_id = ? AND e.title = ? AND e.effective_to IS NULL`).all(actor.tenantId, from);
+      for (const r of rows) {
+        db.prepare('UPDATE employments SET title = ? WHERE id = ?').run(to, r.id);
+        audit(db, { tenantId: actor.tenantId, actorId: actor.id, action: 'roster.title_rename', entity: 'user', entityId: r.user_id, reason: 'GB decision: job title renamed', before: { title: from }, after: { title: to } });
+        out.push(`${r.name}: ${from} → ${to}`);
+      }
+      const p = db.prepare('UPDATE employee_profiles SET level = ? WHERE tenant_id = ? AND level = ?').run(to, actor.tenantId, from);
+      if (p.changes) out.push(`${p.changes} profile level(s): ${from} → ${to}`);
+    }
+  });
+  return out.length ? out : ['No titles to rename'];
 }

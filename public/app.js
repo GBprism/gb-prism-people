@@ -13,6 +13,13 @@ import { historyScreen } from '/screens/history.js';
 import { reviewScreen } from '/screens/review.js';
 import { teamScreen } from '/screens/team.js';
 import { libraryScreen } from '/screens/library.js';
+import { timesheetScreen } from '/screens/timesheet.js';
+import { expensesScreen } from '/screens/expenses.js';
+import { lettersScreen } from '/screens/letters.js';
+import { companyScreen } from '/screens/company.js';
+import { policiesScreen } from '/screens/policies.js';
+import { onboardingScreen } from '/screens/onboarding.js';
+import { checklistsScreen } from '/screens/checklists.js';
 import { aiExamplesScreen, adminDashboardScreen, adminRosterScreen, adminPolicyScreen, adminRemindersScreen, adminAiScreen, adminAuditScreen } from '/screens/admin.js';
 
 // ------------------------------------------------------------- helpers --
@@ -45,7 +52,10 @@ let ME = null;
 const routes = [
   [/^#\/?$/, home], [/^#\/inbox$/, () => inboxScreen({ api })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],
-  [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })], [/^#\/people$/, () => peopleScreen({ api })],
+  [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
+  [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
+  [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
+  [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {

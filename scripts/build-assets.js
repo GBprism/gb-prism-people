@@ -25,6 +25,7 @@ export const ICONS = [
   'plane', 'house', 'stethoscope', 'heart', 'sun', 'layout-dashboard', 'table', 'rows-3', 'command', 'messages-square', 'lightbulb', 'file-check-2', 'refresh-cw',
   'circle-dot', 'circle', 'hourglass', 'calculator', 'party-popper', 'mail', 'building-2', 'map-pin', 'percent', 'hash', 'goal', 'id-card', 'dumbbell', 'contact',
   'library-big', 'trophy', 'languages', 'folder-open', 'globe',
+  'video', 'receipt', 'timer', 'mail-check', 'list-todo', 'book-open-check', 'palette', 'presentation', 'paperclip', 'printer', 'user-plus',
 ];
 const src = nm('lucide-static/icons');
 const symbols = [];

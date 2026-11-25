@@ -117,6 +117,15 @@ Read the report, then run it again without `--dry-run`. Add `--cutover yyyy-mm-d
 
 Everyone signed in can read the Library. Partners and People Ops change status, Drive links, scope and proposal outcomes there. No fees, contract values or client contacts are stored. Each person links their objectives to up to three strategy KPIs from their review page; colleagues see how many people support each KPI, partners and People Ops also see who.
 
+## Timesheets, expenses, letters, checklists, policies, onboarding, CVs
+
+The private bundle also carries `title-renames.json` (job-title decisions, e.g. Business Analyst (Grade 1) → Consultant), `onboarding-letters.json`, `checklists.json`, `policies-brand-expenses.json`, `brand/` (logo files) and `cv-template/media/` (the icons and logo used on CV slides). `load-gb-all.js` loads them all; re-running is safe.
+
+- **Expenses** follow GB's claim form. Every line needs its receipt or invoice (PDF, JPEG, PNG or WebP, up to 5 MB, stored in the database). Claims go to the leave approver unless an `expense_approver` setting is set; the approver's own claims go to another partner. People Ops marks approved claims paid.
+- **Timesheets** draft each month from assignments: 8 hours per working day, minus public holidays and approved leave. People correct and submit; partners and People Ops approve and see man-hours per project.
+- **Letters**: People Ops prints from the template on letterhead (browser print / save as PDF). Pay fields are typed at print time and never saved.
+- **CV slides** are generated as .pptx in GB's layout (`/api/cv/<id>` or `/api/cv/all`). Set `CV_ASSET_DIR` only if the icons live somewhere other than `config/private/real/cv-template/media`.
+
 ## Leave approver and LeaveBoard cutover (GB decisions)
 
 ```bash

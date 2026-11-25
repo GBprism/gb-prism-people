@@ -506,3 +506,37 @@ table.data td .badge { max-inline-size: 26ch; }
 .kpi-row { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); justify-content: space-between; padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
 .kpi-links { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+
+/* Timesheet */
+.month-label { min-inline-size: 140px; text-align: center; }
+.ts-grid th[scope="row"] { white-space: nowrap; font-weight: var(--weight-medium); }
+.ts-grid .ts-note { font-size: var(--text-xs); }
+.ts-grid .ts-head { display: inline-block; max-inline-size: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.ts-grid .ts-cell { inline-size: 64px; text-align: end; }
+.ts-grid tr.ts-off { background: var(--color-subtle); }
+.ts-grid tr.ts-off .ts-cell { opacity: .7; }
+.ts-grid tr.ts-leave th { color: var(--color-warning); }
+.ts-grid tfoot th, .ts-grid tfoot td { border-block-start: 2px solid var(--color-border-strong); }
+
+/* Expenses, letters, checklists, policies */
+.callout { margin: 0; padding: var(--space-3) var(--space-4); border-inline-start: 3px solid var(--color-primary); background: var(--color-primary-tint); border-radius: var(--radius-sm); }
+.letter-preview { padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-sm); }
+.letter-preview p { margin: 0 0 var(--space-1); }
+.print-area { display: none; }
+.check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.check-list li { display: flex; gap: var(--space-2); align-items: flex-start; }
+.policy-rules { margin: 0; padding-inline-start: var(--space-5); display: grid; gap: var(--space-1); }
+.brand-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+.brand-tile { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.brand-tile img { inline-size: 100%; aspect-ratio: 1; object-fit: contain; border-radius: var(--radius-sm); background: var(--color-subtle); }
+.progress { block-size: 8px; border-radius: var(--radius-pill); background: var(--color-neutral-bg); overflow: hidden; }
+.progress > span { display: block; block-size: 100%; background: var(--color-primary); }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { display: block; position: absolute; inset-inline-start: 0; inset-block-start: 0; inline-size: 100%; padding: 24mm 20mm; font-size: 11pt; color: black; background: white; }
+  .print-area p { margin: 0 0 6pt; }
+  .print-area .letter-logo { block-size: 48px; margin-block-end: 18pt; }
+  .print-area .letter-foot { margin-block-start: 24pt; font-size: 9pt; color: dimgray; }
+}
