@@ -77,10 +77,12 @@ export function listProfiles(db, actor) {
 
 /** Team directory for everyone in the workspace: name, title, photo and company-profile facts only. */
 export function teamDirectory(db, actor) {
-  return db.prepare(`SELECT u.id, u.name, u.email, e.title, ${PUBLIC_FIELDS.map((f) => `p.${f}`).join(', ')}, ph.updated_at photo_at
+  return db.prepare(`SELECT u.id, u.name, u.email, e.title, e.hire_date, ${PUBLIC_FIELDS.map((f) => `p.${f}`).join(', ')}, ph.updated_at photo_at
       FROM users u LEFT JOIN employments e ON e.user_id = u.id AND e.effective_to IS NULL LEFT JOIN employee_profiles p ON p.user_id = u.id
       LEFT JOIN user_photos ph ON ph.user_id = u.id WHERE u.tenant_id = ? AND u.active = 1 ORDER BY u.name`).all(actor.tenantId)
-    .map((r) => ({ ...r, photo: r.photo_at ? `/api/people/${r.id}/photo?v=${encodeURIComponent(r.photo_at)}` : null, photo_at: undefined }));
+    .map((r) => ({ ...r, photo: r.photo_at ? `/api/people/${r.id}/photo?v=${encodeURIComponent(r.photo_at)}` : null, photo_at: undefined,
+      // years with GB, rounded up from the joining date (a part year counts as a year)
+      years_at_gb: r.hire_date ? Math.max(1, Math.ceil((Date.now() - Date.parse(`${r.hire_date}T00:00:00Z`)) / (365.25 * 864e5))) : null }));
 }
 
 export const photoUrl = (db, userId) => { const r = db.prepare('SELECT updated_at FROM user_photos WHERE user_id = ?').get(userId); return r ? `/api/people/${userId}/photo?v=${encodeURIComponent(r.updated_at)}` : null; };

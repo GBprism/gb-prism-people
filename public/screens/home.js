@@ -38,6 +38,7 @@ export async function homeScreen({ api, me }) {
   const [home, inboxRes, seats] = await Promise.all([api('/api/home'), api('/api/inbox').catch(() => ({ items: [] })), api('/api/ai/seats/mine').catch(() => [])]);
   const isPartner = me.roles.includes('partner') || me.roles.includes('admin');
   const projects = isPartner ? await api('/api/projects').catch(() => []) : [];
+  const running = await api('/api/active-projects').catch(() => []);
   const tasks = buildTasks({ home, inbox: inboxRes.items || [], seats });
   const first = me.name.split(' ')[0];
   const hr = hourAmman();
@@ -79,20 +80,22 @@ export async function homeScreen({ api, me }) {
   drawTasks();
   const tasksCard = h('section', { class: 'card' }, h('header', { class: 'card-header' }, h('h2', {}, icon('list-checks', { size: 'lg' }), 'Your tasks'), chips ? h('div', { class: 'card-actions' }, chips) : null), h('div', { class: 'card-body flush' }, taskList));
 
-  // ---- portfolio (partners and admins)
-  let portfolio = null;
-  if (isPartner) {
-    const active = projects.filter((p) => p.register_status === 'approved' && p.status === 'active');
-    const awaiting = projects.reduce((a, p) => a + p.team_unconfirmed.length, 0);
-    portfolio = h('section', { class: 'card' }, h('header', { class: 'card-header' }, h('h2', {}, icon('briefcase', { size: 'lg' }), 'Portfolio'),
-      h('div', { class: 'card-actions' }, awaiting ? badge(`${awaiting} to confirm`, 'warning', 'user') : null, button('All projects', { variant: 'ghost', size: 'sm', iconName: 'arrow-right', href: '#/projects' }))),
-      h('div', { class: 'card-body' }, active.length ? h('div', { class: 'portfolio' }, active.slice(0, 8).map((p) => {
-        const dl = p.deliverables; const accepted = dl.filter((d) => ['accepted', 'approved'].includes(d.status)).length;
-        return h('a', { class: 'portfolio-item', href: '#/projects' }, h('strong', {}, p.name), h('span', { class: 'muted' }, `${p.kind === 'proposal' ? 'Proposal' : 'Engagement'} · Lead ${p.lead_name || '—'}`),
-          h('span', { class: 'portfolio-meta' }, icon('users'), `${p.team_confirmed.length} confirmed`, icon('file-check-2'), `${accepted}/${dl.length} deliverables accepted`),
-          p.end_date ? h('span', { class: 'portfolio-meta' }, icon('calendar-days'), `Ends ${fmtDue(p.end_date)}`) : null);
-      })) : emptyState({ iconName: 'briefcase', title: 'No active projects', text: 'Approved engagements and proposals appear here.', action: button('Open projects', { variant: 'primary', iconName: 'folder-kanban', href: '#/projects' }) })));
-  }
+  // ---- active projects: mine first (everyone); partners also see what needs confirming
+  const mineFirst = [...running].sort((a, b) => Number(b.mine) - Number(a.mine));
+  const shownProjects = isPartner ? mineFirst : mineFirst.filter((p) => p.mine);
+  const awaiting = isPartner ? projects.reduce((a, p) => a + p.team_unconfirmed.length, 0) : 0;
+  const portfolio = h('section', { class: 'card' }, h('header', { class: 'card-header' }, h('h2', {}, icon('briefcase', { size: 'lg' }), isPartner ? 'Active projects' : 'My projects'),
+    h('div', { class: 'card-actions' }, awaiting ? badge(`${awaiting} to confirm`, 'warning', 'user') : null, button('All', { variant: 'ghost', size: 'sm', iconName: 'arrow-right', href: '#/active' }))),
+    h('div', { class: 'card-body' }, shownProjects.length ? h('div', { class: 'portfolio' }, shownProjects.slice(0, 6).map((p) => h('a', { class: 'portfolio-item', href: '#/active' },
+      h('strong', {}, p.name), h('span', { class: 'muted' }, [p.client_name, `Lead ${p.lead_name || '—'}`].filter(Boolean).join(' · ')),
+      h('span', { class: 'portfolio-meta' }, icon('users'), `${p.team.length} on the team`, p.end_date ? [icon('calendar-days'), `Ends ${fmtDue(p.end_date)}`] : null))))
+      : emptyState({ iconName: 'briefcase', title: 'No active projects for you right now', text: 'Projects you lead or work on appear here.', action: button('See all active projects', { variant: 'primary', iconName: 'briefcase', href: '#/active' }) })));
+
+  // ---- quick actions
+  const quick = h('nav', { class: 'quick-actions', 'aria-label': 'Quick actions' }, [
+    ['#/timeoff', 'calendar-days', 'Request time off'], ['#/timesheet', 'timer', 'Fill my timesheet'], ['#/expenses', 'receipt', 'Claim an expense'],
+    ['#/messages', 'messages-square', 'Message someone'], ['#/letters', 'mail-check', 'Ask for a letter'], ['#/profile', 'pencil', 'Update my profile'],
+  ].map(([href, ic, label]) => h('a', { class: 'quick', href }, h('span', { class: 'quick-icon' }, icon(ic, { size: 'lg' })), h('span', {}, label))));
 
   // ---- your apps
   const appsWrap = h('div', { class: 'app-groups' });
@@ -110,7 +113,7 @@ export async function homeScreen({ api, me }) {
   drawApps();
   const appsCard = h('section', { class: 'card' }, h('header', { class: 'card-header' }, h('h2', {}, icon('layout-dashboard', { size: 'lg' }), 'Your apps')), h('div', { class: 'card-body' }, appsWrap));
 
-  const root = h('div', { class: 'home' }, head, stats, h('div', { class: 'home-main' }, tasksCard, portfolio), appsCard);
+  const root = h('div', { class: 'home' }, head, stats, quick, h('div', { class: 'home-main' }, tasksCard, portfolio), appsCard);
   root.modern = true; root.noHeader = true;
   return root;
 }

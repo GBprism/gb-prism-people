@@ -129,9 +129,9 @@ if (has('library.json')) {
 {
   const read = (f) => (has(f) ? JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) : null);
   const ol = read('onboarding-letters.json'); const cl = read('checklists.json'); const pb = read('policies-brand-expenses.json');
-  if (ol || cl || pb) {
+  if (ol || cl || pb || has('hr-policies.json')) {
     const brand = (pb?.brand_files || []).filter((b) => has(b.file)).map((b, i) => ({ label: `GB Advisory logo ${i + 1}`, variant: b.variant, orientation: b.orientation, filename: path.basename(b.file), buffer: fs.readFileSync(path.join(dir, b.file)) }));
-    const r = applyWorkplace(db, actor, { letters: ol?.letters || [], onboarding: ol?.onboarding || [], checklists: cl || undefined, policies: (pb?.ai_policies || []).map((p) => ({ ...p, category: 'AI' })), brand });
+    const r = applyWorkplace(db, actor, { letters: ol?.letters || [], onboarding: ol?.onboarding || [], checklists: cl || undefined, policies: [...(pb?.ai_policies || []).map((p) => ({ ...p, category: 'AI' })), ...(read('hr-policies.json')?.policies || [])], brand });
     log('Workplace content', `${r.letters} letter templates, ${r.checklists} checklists, ${r.policies} policies, ${r.onboarding} onboarding steps, ${r.brand} brand files`);
   }
 }

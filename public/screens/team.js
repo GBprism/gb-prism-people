@@ -22,10 +22,11 @@ export async function teamScreen({ api, me }) {
   const draw = () => grid.replaceChildren(...people.filter((p) => filter === 'all' || LEVEL(p.public_title || p.title) === filter).sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name))
     .map((p) => h('button', { class: 'team-card', type: 'button', onclick: () => open(p), 'aria-label': `${p.name}, ${p.public_title || p.title || ''}` },
       avatar(p, 'lg'), h('strong', {}, p.name), h('span', { class: 'muted' }, p.public_title || p.title || ''),
-      p.years_experience ? h('span', { class: 'muted' }, `${p.years_experience} years’ experience`) : null)));
+      p.years_at_gb ? h('span', { class: 'team-years' }, icon('award'), ` ${p.years_at_gb} ${p.years_at_gb === 1 ? 'year' : 'years'} at GB`) : null)));
   const open = (p) => openDrawer({ title: p.name, iconName: 'user', body: h('div', { class: 'stack' },
     h('div', { class: 'team-head' }, avatar(p, 'xl'), h('div', { class: 'stack' }, h('strong', {}, p.public_title || p.title || ''), h('a', { href: `mailto:${p.email}` }, icon('mail'), ` ${p.email}`),
-      p.years_experience ? h('span', { class: 'muted' }, `${p.years_experience} years of experience`) : null)),
+      p.years_at_gb ? h('span', { class: 'muted' }, `${p.years_at_gb} ${p.years_at_gb === 1 ? 'year' : 'years'} at GB Advisory (since ${new Date(`${p.hire_date}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })})`) : null,
+      p.years_experience ? h('span', { class: 'muted' }, `${p.years_experience} years of experience in total`) : null)),
     p.bio ? h('p', {}, p.bio) : null,
     h('dl', { class: 'kv' }, p.expertise ? [h('dt', {}, 'Experience'), h('dd', {}, p.expertise)] : null, p.education ? [h('dt', {}, 'Education'), h('dd', {}, p.education)] : null,
       p.certifications ? [h('dt', {}, 'Certifications'), h('dd', {}, p.certifications)] : null),
@@ -33,7 +34,8 @@ export async function teamScreen({ api, me }) {
     list(p.functions).length ? h('div', {}, h('h3', { class: 'kv-head' }, 'Functional experience'), h('ul', { class: 'chip-list' }, list(p.functions).map((x) => h('li', { class: 'tag tag-info' }, x)))) : null,
     p.cv_projects ? h('div', {}, h('h3', { class: 'kv-head' }, 'Previous projects'), h('ul', { class: 'bullets' }, p.cv_projects.split('\n').filter(Boolean).map((x) => h('li', {}, x)))) : null,
     !p.bio && !p.cv_projects ? h('p', { class: 'muted' }, 'A fuller CV appears here once it is added to the company profile.') : null),
-  footer: canHr ? () => button('Open HR profile', { iconName: 'id-card', href: '#/people' }) : null });
+  footer: () => [p.id !== me.id ? button('Message', { iconName: 'messages-square', onClick: async () => { const { id } = await api('/api/messages/direct', { method: 'POST', body: { userId: p.id } }); location.hash = `#/messages?c=${id}`; } }) : button('Edit my profile', { iconName: 'pencil', href: '#/profile' }),
+    canHr ? button('Open HR profile', { iconName: 'id-card', href: '#/people' }) : null].filter(Boolean) });
   draw();
   const counts = Object.fromEntries(groups.map((g) => [g, people.filter((p) => LEVEL(p.public_title || p.title) === g).length]));
   const chips = filterChips([{ value: 'all', label: 'Everyone', count: people.length }, ...groups.filter((g) => counts[g]).map((g) => ({ value: g, label: g, count: counts[g] }))], 'all', (v) => { filter = v; draw(); });

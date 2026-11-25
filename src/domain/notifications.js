@@ -82,6 +82,7 @@ export function planReminders(db, actor, { cycleId, asOf = todayIn(), queue = fa
 
 /** Is the task behind a reminder still outstanding? */
 function stillOutstanding(db, n) {
+  if (n.task_ref === 'event') return true; // event emails (requests, messages) are sent once, as queued
   const [planId, stateAtQueue] = n.task_ref.split(':');
   const p = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
   if (!p) return false;

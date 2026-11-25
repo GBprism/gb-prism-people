@@ -43,6 +43,8 @@ export async function expensesScreen({ api, me, query = '' }) {
       c.can.edit ? button('Submit for approval', { variant: 'primary', iconName: 'send', onClick: async () => { try { await api(`/api/expenses/${c.id}/submit`, { method: 'POST' }); toast('Submitted for approval'); close(); draw(); } catch (e) { toast(e.message, 'danger'); } } }) : null,
       c.can.decide ? button('Return to employee', { iconName: 'rotate-ccw', onClick: async () => { const note = await promptModal({ title: 'Return the claim', label: 'What needs to change?', confirmLabel: 'Return' }); if (note) { await api(`/api/expenses/${c.id}/decide`, { method: 'POST', body: { decision: 'reject', note } }); toast('Returned'); close(); draw(); } } }) : null,
       c.can.decide ? button('Approve', { variant: 'primary', iconName: 'check', onClick: async () => { await api(`/api/expenses/${c.id}/decide`, { method: 'POST', body: { decision: 'approve' } }); toast('Approved — regular and fair business'); close(); draw(); } }) : null,
+      c.can.withdraw ? button('Withdraw', { variant: 'ghost', iconName: 'rotate-ccw', onClick: async () => { await api(`/api/expenses/${c.id}/cancel`, { method: 'POST', body: {} }); toast('Withdrawn — back to draft'); close(); draw(); } }) : null,
+      c.can.cancel ? button('Cancel claim', { variant: 'ghost', iconName: 'circle-x', onClick: async () => { const note = await promptModal({ title: 'Cancel this claim?', label: 'Reason (shown to the employee)', confirmLabel: 'Cancel claim', tone: 'danger' }); if (note) { await api(`/api/expenses/${c.id}/cancel`, { method: 'POST', body: { note } }); toast('Claim cancelled'); close(); draw(); } } }) : null,
       c.can.pay ? button('Mark paid', { variant: 'primary', iconName: 'check', onClick: async () => { await api(`/api/expenses/${c.id}/paid`, { method: 'POST' }); toast('Marked paid'); close(); draw(); } }) : null,
     ].filter(Boolean) });
   }
@@ -93,11 +95,41 @@ export async function expensesScreen({ api, me, query = '' }) {
     footer: (close) => button('Create claim', { variant: 'primary', iconName: 'plus', onClick: async () => { try { const { id } = await api('/api/expenses', { method: 'POST', body: { title: t.value, period_from: f.value || null, period_to: to.value || null } }); close(); await draw(); openClaim(id); } catch (e) { toast(e.message, 'danger'); } } }) });
   }
 
+  async function gymPanel() {
+    const g = await api('/api/gym');
+    const GS = { submitted: ['Waiting for approval', 'info'], approved: ['Approved', 'success'], rejected: ['Not approved', 'danger'] };
+    const gymName = input({ id: 'gy-name', placeholder: 'e.g. Fitness First Abdoun' }); const from = input({ id: 'gy-from', type: 'date' }); const to = input({ id: 'gy-to', type: 'date' });
+    const file = h('input', { type: 'file', id: 'gy-file', accept: 'application/pdf,image/png,image/jpeg,image/webp' });
+    const row = (x, admin) => h('li', { class: 'eng-item' }, h('div', { class: 'eng-main' }, h('strong', {}, admin ? `${x.name} — ${x.gym_name}` : x.gym_name),
+      h('div', { class: 'eng-meta muted' }, h('span', {}, icon('calendar-days'), ` ${fmt(x.valid_from)} – ${fmt(x.valid_to)}`), x.note ? h('span', {}, x.note) : null)),
+      h('div', { class: 'eng-side' }, badge(...GS[x.status]), h('a', { class: 'btn btn-ghost btn-sm', href: `/api/gym/${x.id}/file`, target: '_blank', rel: 'noopener' }, icon('paperclip'), h('span', {}, 'Registration')),
+        admin && x.status === 'submitted' && x.user_id !== me.id ? [button('Approve', { size: 'sm', variant: 'primary', iconName: 'check', onClick: async () => { await api(`/api/gym/${x.id}/decide`, { method: 'POST', body: { decision: 'approve' } }); toast('Approved'); draw(); } }),
+          button('Reject', { size: 'sm', variant: 'ghost', onClick: async () => { const note = await promptModal({ title: 'Not approve this gym allowance?', label: 'Reason (shown to the employee)', confirmLabel: 'Reject' }); if (note) { await api(`/api/gym/${x.id}/decide`, { method: 'POST', body: { decision: 'reject', note } }); draw(); } } })] : null));
+    return [
+      h('p', { class: 'callout' }, icon('dumbbell'), ' Gym allowance (GB policy): you are eligible once you attach your gym registration or membership showing the gym and the period. People Ops checks it; the allowance applies for that period. Upload the new registration when you renew.'),
+      g.current ? h('p', { class: 'muted' }, icon('circle-check'), ` You are eligible until ${fmt(g.current.valid_to)} (${g.current.gym_name}).`) : null,
+      card({ title: 'Attach my gym registration', iconName: 'dumbbell', body: h('form', { class: 'stack', onsubmit: (e) => e.preventDefault() },
+        h('div', { class: 'form-grid' }, field({ label: 'Gym', id: 'gy-name', control: gymName, required: true }), field({ label: 'Membership from', id: 'gy-from', control: from, required: true }),
+          field({ label: 'Membership to', id: 'gy-to', control: to, required: true }), field({ label: 'Registration or membership document (PDF or photo)', id: 'gy-file', control: file, required: true })),
+        button('Send for approval', { variant: 'primary', iconName: 'send', onClick: async () => {
+          const f = file.files[0]; if (!f) { toast('Attach the registration document', 'danger'); return; }
+          try { await api(`/api/gym?gym=${encodeURIComponent(gymName.value)}&from=${from.value}&to=${to.value}&name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: f }); toast('Sent for approval'); draw(); } catch (e) { toast(e.message, 'danger'); }
+        } })) }),
+      g.mine.length ? card({ title: 'My gym registrations', iconName: 'history', body: h('ul', { class: 'eng-list' }, g.mine.map((x) => row(x, false))) }) : null,
+      g.canApprove ? card({ title: 'Gym registrations to check', iconName: 'user-check', body: g.queue.length ? h('ul', { class: 'eng-list' }, g.queue.map((x) => row(x, true))) : emptyState({ iconName: 'dumbbell', title: 'Nothing submitted yet' }) }) : null,
+    ].filter(Boolean);
+  }
+
   async function draw() {
+    if (tab === 'gym') {
+      const tabsG = filterChips([{ value: 'mine', label: 'My claims' }, { value: 'gym', label: 'Gym allowance', iconName: 'dumbbell' }], 'gym', (v) => { tab = v; draw(); });
+      body.replaceChildren(h('div', { class: 'toolbar' }, tabsG), ...(await gymPanel()));
+      return;
+    }
     const [mine, todo] = await Promise.all([api('/api/expenses?scope=mine'), api('/api/expenses?scope=approve')]);
     const all = canAll ? await api('/api/expenses?scope=all') : [];
     const tabs = filterChips([{ value: 'mine', label: 'My claims', count: mine.length }, todo.length || canAll ? { value: 'approve', label: 'To approve', count: todo.length } : null,
-      canAll ? { value: 'all', label: 'All submitted', count: all.length } : null].filter(Boolean), tab, (v) => { tab = v; draw(); });
+      canAll ? { value: 'all', label: 'All submitted', count: all.length } : null, { value: 'gym', label: 'Gym allowance', iconName: 'dumbbell' }].filter(Boolean), tab, (v) => { tab = v; draw(); });
     const list = tab === 'approve' ? todo : tab === 'all' ? all : mine;
     body.replaceChildren(h('div', { class: 'toolbar' }, tabs, tab === 'mine' ? button('New claim', { variant: 'primary', iconName: 'plus', onClick: newClaim }) : null),
       list.length ? h('ul', { class: 'eng-list' }, list.map((c) => row(c, () => openClaim(c.id)))) : emptyState({ iconName: 'receipt', title: tab === 'mine' ? 'No claims yet' : 'Nothing waiting', text: tab === 'mine' ? 'Start a claim, add each expense and upload its receipt.' : null }));

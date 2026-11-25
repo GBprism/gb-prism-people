@@ -30,6 +30,12 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
       try { url = new URL(req.url, 'http://local'); } catch { return send(res, 400, { error: 'invalid', message: 'Malformed request' }); }
       if (url.pathname === '/auth/google' && googleCfg) return google.start(googleCfg, res);
       if (url.pathname === '/auth/google/callback' && googleCfg) return await google.callback(googleCfg, db, req, res, url, fetchImpl);
+      if (url.pathname === '/auth/google/slides' && googleCfg) {
+        const uid_ = readSession(req); const u = uid_ && loadActor(db, uid_);
+        if (!u) { res.writeHead(302, { Location: '/' }); return res.end(); }
+        const t = url.searchParams.get('cv') || 'me';
+        return google.startSlides(googleCfg, res, u, t === 'me' ? u.id : t === 'all' ? 'all' : String(t).slice(0, 40));
+      }
       if (url.pathname === '/healthz') { db.prepare('SELECT 1').get(); return send(res, 200, { ok: true }); }
       if (url.pathname === '/api/auth/config') return send(res, 200, { google: !!googleCfg, dev: devLogin, domain: googleCfg?.domain ?? null });
       if (!url.pathname.startsWith('/api/')) return serveStatic(url.pathname, res);
@@ -106,4 +112,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.env.DEV_LOGIN === '1') { seedSynthetic(db); seedPlans(db); }
   const port = Number(process.env.PORT || 3000);
   createServer(db).listen(port, process.env.HOST || '0.0.0.0', () => console.log(`GB Prism People & Performance on http://localhost:${port}${process.env.DEV_LOGIN === '1' ? ' (synthetic dev login)' : ''}`));
+  // email: send queued notifications every minute when SMTP is configured; daily document-expiry reminders
+  const { smtpTransport } = await import('./domain/mailer.js');
+  const { deliver } = await import('./domain/notifications.js');
+  const { remindExpiringDocuments } = await import('./domain/events.js');
+  const transport = await smtpTransport();
+  if (!transport) console.log('Email: SMTP_HOST not set — notifications stay in the outbox (Admin → Reminders).');
+  const tick = async () => {
+    for (const t of db.prepare('SELECT id FROM tenants').all()) {
+      try { remindExpiringDocuments(db, t.id); if (transport) await deliver(db, { tenantId: t.id, transport }); } catch (e) { console.error('Email:', e.message); }
+    }
+  };
+  setInterval(tick, 60_000).unref(); setTimeout(tick, 5_000).unref();
 }
