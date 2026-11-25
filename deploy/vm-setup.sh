@@ -57,6 +57,12 @@ chown root:gbprism "$ENV_FILE"; chmod 640 "$ENV_FILE"
 echo "== service"
 cp "$APP_DIR/deploy/gb-prism.service" /etc/systemd/system/gb-prism.service
 sed "s/__DOMAIN__/$DOMAIN/" "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
+# old addresses (REDIRECT_FROM in the settings file, space-separated) forward to the current one
+REDIRECT_FROM=$(grep '^REDIRECT_FROM=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')
+for OLD in $REDIRECT_FROM; do
+  [ "$OLD" = "$DOMAIN" ] && continue
+  printf '\n%s {\n\tredir https://%s{uri} permanent\n}\n' "$OLD" "$DOMAIN" >> /etc/caddy/Caddyfile
+done
 systemctl daemon-reload
 systemctl enable gb-prism caddy >/dev/null
 

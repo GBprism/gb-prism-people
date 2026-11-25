@@ -62,7 +62,7 @@ To find who manages the DNS: Google Admin console → **Account → Domains → 
    ```bash
    sudo systemctl restart gb-prism caddy
    ```
-5. Check it works by opening https://prism.gb-advisory.com/healthz in your browser. It should say `{"ok":true}`. The HTTPS certificate is issued automatically once DNS (step 4) has updated, which can take up to an hour.
+5. Check it works by opening https://people.gb-advisory.com/healthz in your browser. It should say `{"ok":true}`. The HTTPS certificate is issued automatically once DNS (step 4) has updated, which can take up to an hour.
 
 ## 7. Load GB's private setup files
 1. In the SSH window, click **Upload file** (the ⬆ icon at the top right) and upload `gb-prism-private-config.zip`. You receive this zip privately; it is never stored in GitHub.
@@ -73,7 +73,7 @@ To find who manages the DNS: Google Admin console → **Account → Domains → 
    ```bash
    sudo bash /opt/gb-prism/deploy/run.sh scripts/setup-gb.js --roster config/private/roster.csv --decisions config/private/gb-decisions.json
    ```
-3. Sign in at https://prism.gb-advisory.com with your @gb-advisory.com Google account.
+3. Sign in at https://people.gb-advisory.com with your @gb-advisory.com Google account.
 4. Go to **Admin → Import center**:
    - Upload the seven 2026 evaluation forms (**GB 2026 evaluation forms**, select all at once) → **Preview** → **Apply**.
    - Upload the LeaveBoard exports one at a time → **Preview** → **Apply**.
@@ -127,3 +127,10 @@ Until opening balances are posted, Time off tells people to keep using LeaveBoar
 3. **Close of business 24 Nov:** export LeaveBoard *Annual situation* and *Leaves*. In Admin → Imports upload each → Preview → Apply. On the Annual situation import, set the switch-over date to `2026-11-24` and click **Post opening balances**.
 4. **Verify:** `node scripts/leave-cutover.js check --db /var/lib/gb-prism/prism-people.db`. Every row must say OK (exit code 0). Anything "NOT posted", "≠ LeaveBoard" or "0 days – confirm" is fixed before telling the team.
 5. Time off opens in Prism only once opening balances exist at the cutover date. Set LeaveBoard to read-only.
+
+## Changing the web address (e.g. prism → people.gb-advisory.com)
+
+1. DNS: add an A record for the new name pointing at the server's static IP (keep the old record).
+2. Google Cloud → APIs & Services → Credentials → the OAuth client → add `https://<new>/auth/google/callback` to Authorized redirect URIs (keep the old one until the switch is done).
+3. On the server, set the new address and keep the old one forwarding:
+   `sudo sed -i 's#^BASE_URL=.*#BASE_URL=https://<new>#' /etc/gb-prism/env && (sudo grep -q '^REDIRECT_FROM=' /etc/gb-prism/env || echo 'REDIRECT_FROM=<old>' | sudo tee -a /etc/gb-prism/env)`, then `./deploy/update.sh`.
