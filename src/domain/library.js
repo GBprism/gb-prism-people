@@ -5,6 +5,8 @@
 // No fees, contract values or client contacts are stored here.
 import { tx, uid, now, audit, bad, forbid, notFound } from '../db.js';
 import { isOps, has, planAccess } from './authz.js';
+import { surveyKpis } from './surveys.js';
+import { knowledgeKpi } from './closeout.js';
 
 export const ENGAGEMENT_STATUS = ['running', 'completed', 'on_hold'];
 export const PROPOSAL_OUTCOMES = ['drafting', 'submitted', 'won', 'lost', 'withdrawn', 'no_go'];
@@ -88,7 +90,7 @@ export function saveEngagement(db, actor, id, patch = {}) {
   });
 }
 
-function clientFor(db, actor, patch) {
+export function clientFor(db, actor, patch) {
   if (patch.clientId) { const c = db.prepare('SELECT * FROM clients WHERE id = ? AND tenant_id = ?').get(patch.clientId, actor.tenantId); if (!c) throw bad('Unknown client'); return c; }
   const name = str(patch.clientName, 200); if (!name) throw bad('Choose a client or type a new client name');
   const key = keyOf(name);
@@ -123,6 +125,7 @@ export function saveProposal(db, actor, id, patch = {}) {
     if ('outcome' in patch) {
       if (!PROPOSAL_OUTCOMES.includes(patch.outcome)) throw bad('Unknown outcome');
       set.outcome = patch.outcome;
+      set.stage = null; // the pipeline stage follows the outcome chosen here
       if (['won', 'lost', 'withdrawn', 'no_go'].includes(patch.outcome) && !('decided_on' in patch) && !row?.decided_on) set.decided_on = new Date().toISOString().slice(0, 10);
     }
     if ('engagementId' in patch) {
@@ -161,6 +164,24 @@ export function strategyView(db, actor) {
   const s = stats(lib.e, lib.p, year);
   // measured live from the library where the data is here; the rest are tracked outside the portal
   const live = { 'proposal hit rate': s.hit_rate == null ? null : { value: `${s.hit_rate}%`, note: `${s.won} won · ${s.lost} lost since January ${year}; ${s.open} still open` } };
+  // measured from surveys, timesheets, close-outs and (partners only) billing
+  const sv = surveyKpis(db, actor.tenantId); const kb = knowledgeKpi(db, actor.tenantId);
+  if (sv.quality) live['quality index on projects delivered'] = { value: `${sv.quality.avg} / 5`, note: `Deliverable quality in ${sv.quality.n} client survey(s), last 12 months` };
+  if (sv.nps || sv.overall) live['customer experience index'] = { value: sv.nps ? `NPS ${sv.nps.nps}` : `${sv.overall.avg} / 5`, note: `${sv.client_responses} client survey(s), last 12 months${sv.overall ? `; satisfaction ${sv.overall.avg} / 5` : ''}` };
+  if (sv.pulse?.enps) live['employee experience index'] = { value: `eNPS ${sv.pulse.enps.nps}`, note: `${sv.pulse.title}, ${sv.pulse.n} anonymous answers` };
+  if (kb.done) live['% completion of knowledge base'] = { value: `${kb.pct}%`, note: `${kb.with_closeout} of ${kb.done} completed engagements since 2025 have a close-out; ${kb.assets} reusable assets` };
+  const months = [1, 2, 3].map((n) => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - n); return d.toISOString().slice(0, 7); });
+  const ut = db.prepare(`SELECT COALESCE(SUM(CASE WHEN code LIKE 'p:%' THEN hours_x100 END), 0) p, COALESCE(SUM(hours_x100), 0) t FROM timesheet_entries WHERE tenant_id = ? AND month IN (${months.map(() => '?').join(',')})`).get(actor.tenantId, ...months);
+  if (ut.t) live['employee utilisation'] = { value: `${Math.round((ut.p / ut.t) * 100)}%`, note: `Project hours ÷ all logged hours, ${months.at(-1)} to ${months[0]}` };
+  if (has(actor, 'partner')) {
+    const inv = db.prepare("SELECT COALESCE(SUM(amount_x100), 0) s, COUNT(DISTINCT project_id) n FROM project_milestones WHERE tenant_id = ? AND status IN ('invoiced','paid') AND invoiced_on LIKE ?").get(actor.tenantId, `${year}-%`);
+    const clients = db.prepare("SELECT COUNT(DISTINCT e.client_id) n FROM project_milestones m JOIN engagements e ON e.project_id = m.project_id WHERE m.tenant_id = ? AND m.status IN ('invoiced','paid') AND m.invoiced_on LIKE ?").get(actor.tenantId, `${year}-%`).n;
+    const fmt = (x) => `${Math.round(x / 100).toLocaleString('en-GB')} JOD`;
+    if (inv.s) {
+      live['total revenues and net profit'] = { value: fmt(inv.s), note: `Invoiced in ${year} (commercial control); net profit needs costs outside the portal` };
+      if (clients) live['revenue per client'] = { value: fmt(inv.s / clients), note: `Invoiced in ${year} ÷ ${clients} client(s) billed` };
+    }
+  }
   for (const k of kpis) k.live = live[k.name_en.trim().toLowerCase()] || null;
   return { cycle_year: cycle?.year || null, objectives, kpis, canSeeNames: seeNames };
 }

@@ -449,6 +449,67 @@ export const MIGRATIONS = [
    CREATE TABLE claude_account_users (
      account_id TEXT NOT NULL REFERENCES claude_accounts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id),
      project_id TEXT REFERENCES projects(id), working_on TEXT, since TEXT, PRIMARY KEY (account_id, user_id));`,
+  // ---- 020 commercial control, staffing, pipeline, surveys, offboarding, training, close-outs ---------
+  `CREATE TABLE project_budgets (
+     project_id TEXT PRIMARY KEY REFERENCES projects(id), tenant_id TEXT NOT NULL,
+     billing TEXT NOT NULL DEFAULT 'fixed' CHECK (billing IN ('fixed','time_materials')), currency TEXT NOT NULL DEFAULT 'JOD',
+     fee_x100 INTEGER NOT NULL DEFAULT 0, budget_hours_x100 INTEGER NOT NULL DEFAULT 0, rate_x100 INTEGER,
+     notes TEXT, last_alert INTEGER NOT NULL DEFAULT 0, updated_by TEXT, updated_at TEXT NOT NULL);
+   CREATE TABLE project_milestones (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL,
+     due_on TEXT, amount_x100 INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','invoiced','paid','cancelled')),
+     invoice_no TEXT, invoiced_on TEXT, paid_on TEXT, position INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+   CREATE TABLE cost_rates (
+     tenant_id TEXT NOT NULL, level TEXT NOT NULL, hourly_x100 INTEGER NOT NULL, target_pct INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, level));
+   ALTER TABLE project_assignments ADD COLUMN allocation_pct INTEGER;
+   CREATE TABLE resource_bookings (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), project_id TEXT REFERENCES projects(id),
+     proposal_id TEXT REFERENCES proposals(id), label TEXT, start_date TEXT NOT NULL, end_date TEXT NOT NULL,
+     pct INTEGER NOT NULL CHECK (pct BETWEEN 5 AND 100), status TEXT NOT NULL DEFAULT 'tentative' CHECK (status IN ('tentative','confirmed')),
+     created_by TEXT, created_at TEXT NOT NULL);
+   ALTER TABLE proposals ADD COLUMN stage TEXT;
+   ALTER TABLE proposals ADD COLUMN value_x100 INTEGER;
+   ALTER TABLE proposals ADD COLUMN currency TEXT;
+   ALTER TABLE proposals ADD COLUMN probability INTEGER;
+   ALTER TABLE proposals ADD COLUMN owner_user_id TEXT REFERENCES users(id);
+   ALTER TABLE proposals ADD COLUMN next_step TEXT;
+   ALTER TABLE proposals ADD COLUMN next_step_on TEXT;
+   ALTER TABLE proposals ADD COLUMN expected_close TEXT;
+   ALTER TABLE proposals ADD COLUMN expected_start TEXT;
+   ALTER TABLE proposals ADD COLUMN contact_id TEXT;
+   ALTER TABLE proposals ADD COLUMN lost_reason TEXT;
+   CREATE TABLE client_contacts (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES clients(id), name TEXT NOT NULL, role TEXT,
+     email TEXT, phone TEXT, notes TEXT, last_contact_on TEXT, updated_at TEXT NOT NULL);
+   CREATE TABLE surveys (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('client','pulse')), title TEXT NOT NULL,
+     project_id TEXT REFERENCES projects(id), engagement_id TEXT REFERENCES engagements(id), contact_name TEXT, contact_email TEXT,
+     token_hash TEXT, opens_on TEXT NOT NULL, closes_on TEXT, status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+     created_by TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE survey_responses (
+     id TEXT PRIMARY KEY, survey_id TEXT NOT NULL REFERENCES surveys(id), answers_json TEXT NOT NULL, comment TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE survey_participation (
+     survey_id TEXT NOT NULL REFERENCES surveys(id), user_id TEXT NOT NULL REFERENCES users(id), answered_at TEXT NOT NULL, PRIMARY KEY (survey_id, user_id));
+   CREATE TABLE offboardings (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), last_day TEXT NOT NULL,
+     kind TEXT NOT NULL DEFAULT 'resignation', status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','completed','cancelled')),
+     started_by TEXT, started_at TEXT NOT NULL, completed_at TEXT);
+   CREATE TABLE offboarding_steps (
+     id TEXT PRIMARY KEY, offboarding_id TEXT NOT NULL REFERENCES offboardings(id), key TEXT NOT NULL, title TEXT NOT NULL, owner TEXT NOT NULL,
+     position INTEGER NOT NULL, done_by TEXT, done_at TEXT, note TEXT);
+   CREATE TABLE trainings (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, provider TEXT,
+     kind TEXT NOT NULL CHECK (kind IN ('course','certification','workshop','conference','self_study')), start_on TEXT, end_on TEXT,
+     hours_x100 INTEGER NOT NULL DEFAULT 0, expires_on TEXT, file_id TEXT REFERENCES files(id), verified_by TEXT, verified_at TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE closeouts (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, engagement_id TEXT REFERENCES engagements(id), project_id TEXT REFERENCES projects(id),
+     went_well TEXT, to_improve TEXT, client_feedback TEXT, tags TEXT, submitted_by TEXT NOT NULL, submitted_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE reusable_assets (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, closeout_id TEXT REFERENCES closeouts(id), title TEXT NOT NULL,
+     kind TEXT NOT NULL CHECK (kind IN ('template','tool','framework','model','training','other')), service_line TEXT, drive_url TEXT NOT NULL,
+     description TEXT, added_by TEXT NOT NULL, created_at TEXT NOT NULL);
+   CREATE INDEX bookings_user ON resource_bookings(user_id, start_date);
+   CREATE INDEX trainings_user ON trainings(user_id);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

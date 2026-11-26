@@ -20,6 +20,13 @@ import * as msg from '../domain/messages.js';
 import * as gym from '../domain/gym.js';
 import * as claude from '../domain/claude.js';
 import { reports } from '../domain/reports.js';
+import * as com from '../domain/commercial.js';
+import * as staff from '../domain/staffing.js';
+import * as pipe from '../domain/pipeline.js';
+import * as srv from '../domain/surveys.js';
+import * as life from '../domain/lifecycle.js';
+import * as clo from '../domain/closeout.js';
+import { notifyExternal } from '../domain/mailer.js';
 import { previewLeaveboard, applyLeaveboard, postOpeningBalances, reconcile, compareSnapshots } from '../imports/leaveboard.js';
 import { previewPlans, applyPlans, previewHistory, applyHistory } from '../imports/pms.js';
 import { previewGbForms, applyGbForms } from '../imports/gbform.js';
@@ -39,7 +46,9 @@ export function buildApi(db) {
     const approvals = db.prepare("SELECT COUNT(*) n FROM employments WHERE (manager_id = ? OR backup_approver_id = ?) AND effective_to IS NULL").get(actor.id, actor.id).n;
     const leads = db.prepare('SELECT COUNT(*) n FROM projects WHERE lead_user_id = ?').get(actor.id).n;
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, google_slides: !!(process.env.GOOGLE_CLIENT_ID && process.env.BASE_URL), can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
-      nav: { inbox: true, office: office.canOffice(db, actor), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+      nav: { inbox: true, office: office.canOffice(db, actor), commercial: has(actor, 'partner'),
+        pipeline: isOps(actor) || has(actor, 'partner') || !!db.prepare('SELECT 1 FROM proposals WHERE owner_user_id = ?').get(actor.id),
+        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // personal settings: email notifications on/off, walkthrough seen
@@ -150,6 +159,11 @@ export function buildApi(db) {
     }
     for (const d of office.expiringDocuments(db, actor))
       items.push({ type: 'document', kind: d.status === 'expired' ? 'Expired document' : 'Renew soon', title: `${d.title}${d.number ? ` (${d.number})` : ''}`, due: d.expires_on, link: '#/documents', state: d.status === 'expired' ? 'Expired' : 'Expiring' });
+    for (const p of srv.openPulsesFor(db, actor)) items.push({ type: 'survey', kind: 'Team pulse', title: `${p.title} — 2 minutes, anonymous`, due: p.closes_on, link: '#/surveys', state: 'Open' });
+    for (const o of pipe.overdueSteps(db, actor)) items.push({ type: 'pipeline', kind: 'Pipeline next step', title: `${o.short || o.name_en}: ${o.next_step || o.title_en}`, due: o.next_step_on, link: '#/pipeline', state: 'Overdue' });
+    for (const e of clo.missingCloseouts(db, actor)) items.push({ type: 'closeout', kind: 'Close-out', title: `${e.short || e.name_en} — ${e.title_en}: lessons learned and reusable assets`, link: `#/library?closeout=${e.id}`, state: 'To write' });
+    for (const s of db.prepare("SELECT s.id, s.title FROM offboarding_steps s JOIN offboardings o ON o.id = s.offboarding_id WHERE o.status = 'open' AND s.done_at IS NULL AND ((s.owner = 'leaver' AND o.user_id = ?) OR (s.owner = 'manager' AND o.user_id IN (SELECT user_id FROM employments WHERE manager_id = ? AND effective_to IS NULL)))").all(actor.id, actor.id))
+      items.push({ type: 'offboarding', kind: 'Leaving checklist', title: s.title, link: '#/offboarding', state: 'To do' });
     const unread = db.prepare('SELECT COUNT(*) n FROM policies p LEFT JOIN policy_acks a ON a.policy_id = p.id AND a.user_id = ? WHERE p.tenant_id = ? AND p.requires_ack = 1 AND (a.acked_at IS NULL OR COALESCE(a.version, \'\') != COALESCE(p.version, \'\'))').get(actor.id, actor.tenantId).n;
     if (unread) items.push({ type: 'policy', kind: 'Policies', title: `${unread} polic${unread === 1 ? 'y' : 'ies'} to read and acknowledge`, link: '#/policies', state: 'To acknowledge' });
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
@@ -427,6 +441,59 @@ export function buildApi(db) {
   r.post('/api/documents/:id/archive', ({ actor, params }) => office.archiveDocument(db, actor, params.id));
   r.post('/api/documents/:id/file', ({ actor, params, raw, ctx }) => office.attachDocumentFile(db, actor, params.id, raw, ctx.url.searchParams.get('name')), { raw: true });
   r.get('/api/documents/:id/file', ({ actor, params }) => office.documentFile(db, actor, params.id));
+  // ------------------------------------------------- commercial (partners) --
+  r.get('/api/commercial', ({ actor, ctx }) => com.portfolio(db, actor, { year: ctx.url.searchParams.get('year') }));
+  r.get('/api/commercial/rates', ({ actor }) => com.costRates(db, actor));
+  r.post('/api/commercial/rates', ({ actor, body }) => com.saveCostRates(db, actor, body.rates || []));
+  r.get('/api/commercial/projects/:id', ({ actor, params }) => com.projectFinance(db, actor, params.id, { forLead: true }));
+  r.post('/api/commercial/projects/:id/budget', ({ actor, params, body }) => com.saveBudget(db, actor, params.id, body));
+  r.post('/api/commercial/projects/:id/milestones', ({ actor, params, body }) => com.saveMilestone(db, actor, params.id, null, body));
+  r.patch('/api/commercial/projects/:id/milestones/:m', ({ actor, params, body }) => com.saveMilestone(db, actor, params.id, params.m, body));
+  r.post('/api/commercial/projects/:id/milestones/:m/delete', ({ actor, params }) => com.deleteMilestone(db, actor, params.id, params.m));
+  // ---------------------------------------------------------- staffing --
+  r.get('/api/staffing', ({ actor, ctx }) => staff.calendar(db, actor, { from: ctx.url.searchParams.get('from'), weeks: ctx.url.searchParams.get('weeks') }));
+  r.post('/api/staffing/assignments/:id', ({ actor, params, body }) => staff.setAllocation(db, actor, params.id, body.pct));
+  r.post('/api/staffing/bookings', ({ actor, body }) => staff.saveBooking(db, actor, null, body));
+  r.patch('/api/staffing/bookings/:id', ({ actor, params, body }) => staff.saveBooking(db, actor, params.id, body));
+  r.post('/api/staffing/bookings/:id/delete', ({ actor, params }) => staff.deleteBooking(db, actor, params.id));
+  // ---------------------------------------------------------- pipeline --
+  r.get('/api/pipeline', ({ actor }) => pipe.pipelineView(db, actor));
+  r.post('/api/pipeline', ({ actor, body }) => pipe.saveOpportunity(db, actor, null, body));
+  r.patch('/api/pipeline/:id', ({ actor, params, body }) => pipe.saveOpportunity(db, actor, params.id, body));
+  r.post('/api/pipeline/:id/project', ({ actor, params }) => pipe.convertToProject(db, actor, params.id));
+  r.get('/api/clients/:id/contacts', ({ actor, params }) => pipe.contacts(db, actor, params.id));
+  r.post('/api/contacts', ({ actor, body }) => pipe.saveContact(db, actor, null, body));
+  r.patch('/api/contacts/:id', ({ actor, params, body }) => pipe.saveContact(db, actor, params.id, body));
+  // ----------------------------------------------------------- surveys --
+  r.get('/api/surveys', ({ actor }) => srv.surveysView(db, actor));
+  r.post('/api/surveys/pulse', ({ actor, body }) => srv.openPulse(db, actor, body));
+  r.post('/api/surveys/:id/answer', ({ actor, params, body }) => srv.answerPulse(db, actor, params.id, body.answers || {}, body.comment));
+  r.post('/api/surveys/:id/close', ({ actor, params }) => srv.closeSurvey(db, actor, params.id));
+  r.post('/api/surveys/client', ({ actor, body }) => {
+    const o = srv.createClientSurvey(db, actor, body);
+    const base = (process.env.BASE_URL || '').replace(/\/$/, '');
+    const link = `${base}/survey/${o.token}`;
+    let emailed = false;
+    if (body.send && body.contact_email) emailed = notifyExternal(db, { tenantId: actor.tenantId, senderId: actor.id, to: body.contact_email, event: 'survey.client', key: o.id,
+      subject: `GB Advisory – your feedback on ${o.title.replace(/^Client feedback – /, '')}`,
+      text: `Dear ${body.contact_name || 'colleague'},\n\nThank you for working with GB Advisory. We would value two minutes of your feedback on our recent engagement. Your answers go to the GB partners and help us improve.\n\n${link}\n\nThe link is personal to you and can be used once.\n\nWith thanks,\n${actor.name}\nGB Advisory` });
+    return { id: o.id, link, emailed };
+  });
+  // ---------------------------------------------- offboarding and training --
+  r.get('/api/offboarding', ({ actor }) => life.offboardingView(db, actor));
+  r.post('/api/offboarding', ({ actor, body }) => life.startOffboarding(db, actor, body));
+  r.post('/api/offboarding/steps/:id', ({ actor, params, body }) => life.tickOffboardingStep(db, actor, params.id, !!body.done, body.note));
+  r.post('/api/offboarding/:id/complete', ({ actor, params, body }) => life.completeOffboarding(db, actor, params.id, { deactivate: body.deactivate !== false }));
+  r.get('/api/training/overview', ({ actor }) => life.trainingOverview(db, actor));
+  r.get('/api/training/:user', ({ actor, params }) => life.trainingView(db, actor, params.user === 'me' ? actor.id : params.user));
+  r.post('/api/training', ({ actor, raw, ctx }) => { const q = Object.fromEntries(ctx.url.searchParams); return life.saveTraining(db, actor, q.id || null, q, raw?.length ? { buffer: raw, name: q.name } : null); }, { raw: true });
+  r.post('/api/training/:id/verify', ({ actor, params }) => life.verifyTraining(db, actor, params.id));
+  r.post('/api/training/:id/delete', ({ actor, params }) => life.deleteTraining(db, actor, params.id));
+  r.get('/api/training/:id/file', ({ actor, params }) => life.trainingFile(db, actor, params.id));
+  // ---------------------------------------------------------- close-outs --
+  r.get('/api/closeouts/:engagement', ({ actor, params }) => clo.closeoutFor(db, actor, params.engagement));
+  r.post('/api/closeouts/:engagement', ({ actor, params, body }) => clo.saveCloseout(db, actor, params.engagement, body));
+  r.get('/api/toolkit', ({ actor }) => ({ assets: clo.toolkit(db, actor), kpi: clo.knowledgeKpi(db, actor.tenantId) }));
   r.get('/api/reports', ({ actor, ctx }) => reports(db, actor, { year: ctx.url.searchParams.get('year') }));
   // ------------------------------------------------------ Claude accounts --
   r.get('/api/claude-accounts', ({ actor }) => { if (has(actor, 'partner') || isOps(actor)) claude.seedFromAttributions(db, actor); return claude.claudeView(db, actor); });

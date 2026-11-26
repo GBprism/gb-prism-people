@@ -25,6 +25,11 @@ import { messagesScreen } from '/screens/messages.js';
 import { activeScreen } from '/screens/active.js';
 import { claudeScreen } from '/screens/claude.js';
 import { reportsScreen } from '/screens/reports.js';
+import { commercialScreen } from '/screens/commercial.js';
+import { staffingScreen } from '/screens/staffing.js';
+import { pipelineScreen } from '/screens/pipeline.js';
+import { surveysScreen } from '/screens/surveys.js';
+import { offboardingScreen, trainingScreen } from '/screens/lifecycle.js';
 import { aiExamplesScreen, adminDashboardScreen, adminRosterScreen, adminPolicyScreen, adminRemindersScreen, adminAiScreen, adminAuditScreen } from '/screens/admin.js';
 
 // ------------------------------------------------------------- helpers --
@@ -63,7 +68,9 @@ const routes = [
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
   [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
   [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })],
-  [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/active$/, () => activeScreen({ api })], [/^#\/claude$/, () => claudeScreen({ api, me: ME })], [/^#\/reports$/, () => reportsScreen({ api })], [/^#\/messages(?:\?(.*))?$/, (query) => messagesScreen({ api, me: ME, query })], [/^#\/people$/, () => peopleScreen({ api })],
+  [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/active$/, () => activeScreen({ api })], [/^#\/claude$/, () => claudeScreen({ api, me: ME })], [/^#\/reports$/, () => reportsScreen({ api })],
+  [/^#\/commercial(?:\?(.*))?$/, (query) => commercialScreen({ api, query })], [/^#\/staffing$/, () => staffingScreen({ api, me: ME })], [/^#\/pipeline$/, () => pipelineScreen({ api, me: ME })],
+  [/^#\/surveys$/, () => surveysScreen({ api })], [/^#\/offboarding$/, () => offboardingScreen({ api, me: ME })], [/^#\/training$/, () => trainingScreen({ api, me: ME })], [/^#\/messages(?:\?(.*))?$/, (query) => messagesScreen({ api, me: ME, query })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
 async function boot() {
@@ -76,6 +83,8 @@ async function boot() {
   if (!prefs.tour_done && !navigator.webdriver) (await import('/tour.js')).startTour({ api });
 }
 async function render() {
+  // a drawer belongs to the page it was opened on: close it when the page changes
+  document.querySelectorAll('body > .drawer, body > .overlay').forEach((el) => el.remove());
   const hash = location.hash || '#/';
   const page = pageFor(hash);
   SHELL.setPage(hash);

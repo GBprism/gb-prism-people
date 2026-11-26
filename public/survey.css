@@ -1,0 +1,22 @@
+:root { --bg: #f5f7fa; --surface: #fff; --ink: #0d1b2a; --ink-2: #44546a; --line: #dde3ea; --navy: #004281; --tint: #e6f0f8; --danger: #a3292b; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0b1420; --surface: #111d2c; --ink: #e8eef5; --ink-2: #b6c3d3; --line: #24344a; --navy: #7fb3e8; --tint: #15283f; --danger: #f29a96; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.sv { max-width: 680px; margin: 0 auto; padding: 32px max(16px, env(safe-area-inset-left)) 64px; display: grid; gap: 18px; }
+.sv-logo { height: 36px; width: auto; }
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 0; }
+.sv-lede { color: var(--ink-2); margin: 0; }
+.sv-error { color: var(--danger); font-weight: 600; margin: 0; }
+form { display: grid; gap: 14px; }
+.sv-q { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 0; display: grid; gap: 10px; }
+.sv-q legend { font-weight: 600; padding: 0; float: left; width: 100%; margin-bottom: 8px; }
+.sv-scale { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv-opt input { position: absolute; opacity: 0; }
+.sv-opt span { display: inline-grid; place-items: center; min-width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-weight: 600; }
+.sv-opt input:checked + span { background: var(--navy); color: var(--surface); border-color: var(--navy); }
+.sv-opt input:focus-visible + span { outline: 2px solid var(--navy); outline-offset: 2px; }
+.sv-ends { display: flex; justify-content: space-between; font-size: .8rem; color: var(--ink-2); }
+.sv-comment span { font-weight: 600; }
+textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+button { justify-self: start; background: var(--navy); color: var(--surface); border: 0; border-radius: 8px; padding: 12px 22px; font: 600 1rem system-ui, sans-serif; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }

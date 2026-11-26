@@ -46,3 +46,11 @@ export async function smtpTransport(env = process.env) {
   const from = env.MAIL_FROM || env.SMTP_USER;
   return async (m) => { await t.sendMail({ from, to: m.to, subject: m.subject, text: m.text, headers: m.headers }); };
 }
+
+/** An email to someone outside GB (e.g. a client survey link). Recorded against the person who sent it. */
+export function notifyExternal(db, { tenantId, senderId, to, event, subject, text, key }) {
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(to || '')) return false;
+  db.prepare(`INSERT OR IGNORE INTO notification_outbox (id, tenant_id, dedupe_key, event, recipient_id, to_email, subject, body, link, task_ref, scheduled_for, mode, status, created_at)
+      VALUES (?,?,?,?,?,?,?,?, '', 'event', ?, 'live', 'queued', ?)`).run(uid('ntf_'), tenantId, `ext:${event}:${key}`, event, senderId, to, subject.slice(0, 180), text, now(), now());
+  return true;
+}

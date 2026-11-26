@@ -24,6 +24,12 @@ export const PAGES = [
   { key: 'onboarding', re: /^#\/onboarding$/, href: '#/onboarding', title: 'Onboarding', icon: 'user-plus', group: 'Company', desc: 'What a new joiner receives, reads and signs, step by step' },
   { key: 'office', re: /^#\/office(\?.*)?$/, href: '#/office', title: 'Office expenses', icon: 'building-2', group: 'Company', desc: 'Rent, utilities, kitchen, supplies and fines — kept by the office administrator', show: (me) => me.nav.office },
   { key: 'documents', re: /^#\/documents$/, href: '#/documents', title: 'Company documents', icon: 'file-check-2', group: 'Company', desc: 'Licences, registrations and other government papers, with expiry reminders', show: (me) => me.nav.office },
+  { key: 'staffing', re: /^#\/staffing$/, href: '#/staffing', title: 'Resource calendar', icon: 'calendar-check', group: 'Business', desc: 'Who is booked and who is free over the next 12 weeks' },
+  { key: 'pipeline', re: /^#\/pipeline$/, href: '#/pipeline', title: 'Pipeline', icon: 'trending-up', group: 'Business', desc: 'Opportunities by stage, value, probability, owner and next step', show: (me) => me.nav.pipeline },
+  { key: 'commercial', re: /^#\/commercial(\?.*)?$/, href: '#/commercial', title: 'Commercial', icon: 'calculator', group: 'Business', desc: 'Project budgets, burn, margin, billing milestones and cash — partners only', show: (me) => me.nav.commercial },
+  { key: 'surveys', re: /^#\/surveys$/, href: '#/surveys', title: 'Surveys', icon: 'heart', group: 'Business', desc: 'Anonymous team pulse and client feedback' },
+  { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', group: 'Workspace', desc: 'Your courses, hours and certificates' },
+  { key: 'offboarding', re: /^#\/offboarding$/, href: '#/offboarding', title: 'Offboarding', icon: 'log-out', group: 'Admin', desc: 'Leaver checklist: handover, equipment, access, settlement', show: (me) => me.nav.offboarding },
   { key: 'claude', re: /^#\/claude$/, href: '#/claude', title: 'Claude accounts', icon: 'bot', group: 'Company', desc: 'Which Claude seats are active, who uses each and what they are working on' },
   { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', group: 'Admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
   { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', group: 'Company', desc: 'Every client and project GB has worked on, who did it, Drive links, proposals and strategy KPIs' },
@@ -38,7 +44,7 @@ export const PAGES = [
   { key: 'admin-ai', re: /^#\/admin\/ai$/, href: '#/admin/ai', title: 'AI adoption', icon: 'bot', group: 'Admin', desc: 'Gemini and Claude usage, kept apart from ratings', show: (me) => me.nav.admin },
   { key: 'admin-audit', re: /^#\/admin\/audit$/, href: '#/admin/audit', title: 'Audit log', icon: 'scroll-text', group: 'Admin', desc: 'Who did what, and when', show: (me) => me.nav.admin },
 ];
-const GROUPS = ['Workspace', 'Performance', 'Company', 'Admin'];
+const GROUPS = ['Workspace', 'Performance', 'Business', 'Company', 'Admin'];
 export const pageFor = (hash) => PAGES.find((p) => p.re.test(hash)) || PAGES[0];
 const visible = (me) => PAGES.filter((p) => p.group && (!p.show || p.show(me)));
 /** Apps the person may open, grouped as in the sidebar (used by the Home launcher). */

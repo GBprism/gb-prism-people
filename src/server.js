@@ -15,6 +15,7 @@ import { readSession, makeSession, sessionCookie, readBody, send, SECURITY_HEADE
 import { loadActor } from './domain/authz.js';
 import { seedSynthetic, seedPlans } from './seed.js';
 import * as google from './http/google.js';
+import { surveyRoute } from './http/survey-page.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLIC = path.join(ROOT, 'public');
@@ -36,6 +37,7 @@ export function createServer(db, { devLogin = process.env.DEV_LOGIN === '1', aut
         const t = url.searchParams.get('cv') || 'me';
         return google.startSlides(googleCfg, res, u, t === 'me' ? u.id : t === 'all' ? 'all' : String(t).slice(0, 40));
       }
+      if (url.pathname.startsWith('/survey/') && ['GET', 'POST'].includes(req.method)) return await surveyRoute(db, req, res, url);
       if (url.pathname === '/healthz') { db.prepare('SELECT 1').get(); return send(res, 200, { ok: true }); }
       if (url.pathname === '/api/auth/config') return send(res, 200, { google: !!googleCfg, dev: devLogin, domain: googleCfg?.domain ?? null });
       if (!url.pathname.startsWith('/api/')) return serveStatic(url.pathname, res);
@@ -116,11 +118,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { smtpTransport } = await import('./domain/mailer.js');
   const { deliver } = await import('./domain/notifications.js');
   const { remindExpiringDocuments } = await import('./domain/events.js');
+  const { notify } = await import('./domain/mailer.js');
+  const { checkBurnAlerts } = await import('./domain/commercial.js');
+  const { remindExpiringCertificates } = await import('./domain/lifecycle.js');
   const transport = await smtpTransport();
   if (!transport) console.log('Email: SMTP_HOST not set — notifications stay in the outbox (Admin → Reminders).');
   const tick = async () => {
     for (const t of db.prepare('SELECT id FROM tenants').all()) {
-      try { remindExpiringDocuments(db, t.id); if (transport) await deliver(db, { tenantId: t.id, transport }); } catch (e) { console.error('Email:', e.message); }
+      try {
+        remindExpiringDocuments(db, t.id); checkBurnAlerts(db, t.id, notify); remindExpiringCertificates(db, t.id, notify);
+        if (transport) await deliver(db, { tenantId: t.id, transport });
+      } catch (e) { console.error('Email:', e.message); }
     }
   };
   setInterval(tick, 60_000).unref(); setTimeout(tick, 5_000).unref();
