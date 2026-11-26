@@ -2,6 +2,7 @@
 // the Drive folder, what is running or completed, proposals won and lost, and GB's strategy KPIs.
 // Everyone can read; partners and People Ops edit status, links, scope and proposal outcomes.
 import { h, icon, button, badge, card, emptyState, filterChips, input, select, textarea, field, openDrawer, statStrip, toast } from '/ui.js';
+import { openCloseout, toolkitPanel } from '/screens/closeout.js';
 
 const T = {
   en: { clients: 'Clients', engagements: 'Engagements', proposals: 'Proposals', strategy: 'Strategy KPIs', search: 'Search client, work or person', allSectors: 'All sectors', allCountries: 'All countries',
@@ -69,7 +70,7 @@ export async function libraryScreen({ api, query = '' }) {
 
   const list = h('div', { class: 'stack' });
   function drawList() {
-    if (tab === 'strategy') return;
+    if (tab === 'strategy' || tab === 'toolkit') return;
     if (tab === 'clients') {
       const eByClient = (c) => data.engagements.filter((e) => e.client_id === c.id && matchEng(e));
       const rows = data.clients.filter((c) => matchClient(c) && (eByClient(c).length || (!f.line && !f.domain && !f.person && !f.year && (!f.q || `${c.name_en} ${c.name_ar} ${c.short}`.toLowerCase().includes(f.q.toLowerCase())))));
@@ -137,6 +138,7 @@ export async function libraryScreen({ api, query = '' }) {
       h('dl', { class: 'kv' }, h('dt', {}, t('client')), h('dd', {}, cname(e.client)), h('dt', {}, t('domain')), h('dd', {}, e.domain || '—'), h('dt', {}, t('years')), h('dd', {}, years(e.year_from, e.year_to)),
         h('dt', {}, t('status')), h('dd', {}, statusBadge(e.status)), h('dt', {}, t('lead')), h('dd', {}, e.lead_name || '—'), h('dt', {}, t('team')), h('dd', {}, teamText(e)),
         e.project_name ? [h('dt', {}, 'Register'), h('dd', {}, h('a', { href: `#/projects?p=${e.project_id}` }, e.project_name))] : null, h('dt', {}, t('drive')), h('dd', {}, driveLink(e.drive_url))),
+      button(e.status === 'completed' ? 'Close-out: lessons and reusable assets' : 'Close-out (when the engagement finishes)', { iconName: 'lightbulb', onClick: () => { document.querySelector('.drawer header .btn')?.click(); openCloseout(api, e.id, reload); } }),
       h('div', { class: 'stack' }, h('h3', { class: 'kv-head' }, 'English'), h('p', {}, e.scope_en || '—')),
       h('div', { class: 'stack', dir: 'rtl', lang: 'ar' }, h('h3', { class: 'kv-head' }, 'العربية'), h('p', {}, e.scope_ar || h('span', { class: 'muted' }, 'لم تُضف ترجمة عربية بعد'))),
       e.team.some((m) => !m.confirmed) ? h('p', { class: 'muted' }, `* ${'Named in the project register; the project lead still has to confirm.'}`) : null,
@@ -197,7 +199,7 @@ export async function libraryScreen({ api, query = '' }) {
     root.dir = lang === 'ar' ? 'rtl' : 'ltr'; root.lang = lang;
     const s = data.stats;
     const tabs = filterChips([{ value: 'clients', label: t('clients'), count: data.clients.length, iconName: 'building-2' }, { value: 'engagements', label: t('engagements'), count: data.engagements.length, iconName: 'briefcase' },
-      { value: 'proposals', label: t('proposals'), count: data.proposals.length, iconName: 'file-text' }, { value: 'strategy', label: t('strategy'), iconName: 'target' }], tab, (v) => { tab = v; draw(); });
+      { value: 'proposals', label: t('proposals'), count: data.proposals.length, iconName: 'file-text' }, { value: 'strategy', label: t('strategy'), iconName: 'target' }, { value: 'toolkit', label: lang === 'ar' ? 'الأدوات' : 'Toolkit', iconName: 'lightbulb' }], tab, (v) => { tab = v; draw(); });
     tabs.setAttribute('aria-label', 'Library sections');
     const langs = filterChips([{ value: 'en', label: 'English' }, { value: 'ar', label: 'العربية' }], lang, (v) => { lang = v; store.set('gb.library.lang', v); draw(); });
     langs.setAttribute('aria-label', 'Language');
@@ -208,11 +210,14 @@ export async function libraryScreen({ api, query = '' }) {
       h('div', { class: 'toolbar' }, tabs, langs),
       statStrip([{ iconName: 'building-2', value: String(s.clients_served), label: t('servedT') }, { iconName: 'briefcase', value: String(s.engagements), label: t('engT') },
         { iconName: 'refresh-cw', value: String(s.running), label: t('runT') }, { iconName: 'trophy', value: s.hit_rate == null ? '—' : `${s.hit_rate}%`, label: `${t('hitT')} (${s.won}/${s.won + s.lost})` }]),
-      tab === 'strategy' ? null : h('div', { class: 'toolbar' }, filters(), h('div', { class: 'row' }, sub, add)),
+      tab === 'strategy' || tab === 'toolkit' ? null : h('div', { class: 'toolbar' }, filters(), h('div', { class: 'row' }, sub, add)),
       list].filter(Boolean));
-    if (tab === 'strategy') drawStrategy().catch((e) => list.replaceChildren(emptyState({ iconName: 'circle-alert', title: e.message }))); else drawList();
+    if (tab === 'strategy') drawStrategy().catch((e) => list.replaceChildren(emptyState({ iconName: 'circle-alert', title: e.message })));
+    else if (tab === 'toolkit') toolkitPanel(api).then((x) => list.replaceChildren(...x)).catch((e) => list.replaceChildren(emptyState({ iconName: 'circle-alert', title: e.message })));
+    else drawList();
   }
   draw();
+  if (params.get('closeout')) setTimeout(() => openCloseout(api, params.get('closeout'), reload), 0);
   root.append(body);
   root.modern = true;
   return root;

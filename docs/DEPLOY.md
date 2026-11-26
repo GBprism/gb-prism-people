@@ -148,6 +148,18 @@ Then `sudo systemctl restart gb-prism`. Until SMTP is set, emails wait in the ou
 
 “Open in Google Slides” creates the CV as a Google Slides file in the person’s own Drive. It uses the same Google sign-in client, asking each person once for access to files the portal creates (drive.file — it cannot see anything else). One-time setup in Google Cloud (same project as the sign-in client): **APIs & Services → Library → Google Drive API → Enable**, then **OAuth consent screen → Data access → Add or remove scopes** → tick `.../auth/drive.file` → Save. No new redirect address is needed.
 
+## Commercial, resource calendar, pipeline, surveys, offboarding, training, close-outs
+
+Nothing to load: these start empty and are filled in the portal.
+
+1. **Commercial (partners):** Commercial → *Cost rates and targets*: set a standard hourly cost per level (salary plus overheads ÷ working hours — never one person's salary) and a utilisation target. Then open each active project → *Set budget* (fee or T&M rate, budget hours) and add billing milestones. Partners are emailed at 75 %, 90 % and 100 % of budgeted hours; the lead gets the same alert with hours only.
+2. **Resource calendar:** leads click a week to set each person's allocation %; until then time is split evenly and marked “estimated”. Book proposal time as tentative; it becomes the project team when the opportunity is won.
+3. **Pipeline:** the Library's proposals appear by stage. Add values, owners and next steps; owners are reminded in the inbox when a next step is overdue. *Won* → *Create the project*.
+4. **Surveys:** open a team pulse each quarter (anonymous; results from 3 answers). After each engagement, *Ask a client for feedback* — the client gets a private link at `https://<your address>/survey/…` (no sign-in). Results feed the strategy KPIs.
+5. **Offboarding:** People Ops → Offboarding → *Start offboarding*; completing it switches the account off (history kept).
+6. **Training** is on each person's Training page; certificate expiry reminders go out 60 days before.
+7. **Close-outs:** when an engagement is marked completed in the Library, its lead gets a close-out in the inbox; reusable assets appear in Library → Toolkit.
+
 ## Office expenses and company documents
 
 `office.json` names who keeps them (GB decision: Abdullah Abu-Alhija). It is applied only while nobody has been chosen in the portal; after that, partners change it on the Office expenses page. Office administrators, People Ops and partners see both pages; nobody else does. Documents expiring within 60 days, or expired, appear in their inbox. Receipts and scans are stored in the database (PDF or photo).
