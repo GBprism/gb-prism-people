@@ -88,16 +88,17 @@ function editMine(api, p) {
   } }) });
 }
 
-export async function myProfileScreen({ api }) {
+export async function myProfileScreen({ api, query = '' }) {
   const [p, prefs, updates] = await Promise.all([api('/api/profile'), api('/api/me/prefs').catch(() => ({})), api('/api/cv-updates').catch(() => [])]);
   const pending = updates.find((u) => u.status === 'pending' && u.user_id === p.user?.id);
   const email = h('input', { type: 'checkbox', id: 'pref-email', checked: prefs.email_notifications !== false, onchange: async (e) => { await api('/api/me/prefs', { method: 'POST', body: { email_notifications: e.target.checked } }); toast(e.target.checked ? 'Emails on' : 'Emails off'); } });
   const root = h('div', { class: 'profile' },
-    h('div', { class: 'toolbar' }, h('div', { class: 'row' }, button('Edit my profile', { variant: 'primary', iconName: 'pencil', onClick: () => editMine(api, p) }),
-      pending ? badge('Changes waiting for approval', 'info') : null),
+    h('div', { class: 'toolbar' }, h('div', { class: 'row' }, button('Edit my profile & CV', { variant: 'primary', iconName: 'pencil', onClick: () => editMine(api, p) }),
+      pending ? badge('Changes waiting for approval', 'info') : h('span', { class: 'muted' }, 'Changes go to People Ops for approval, then update your CV slide')),
       h('label', { class: 'check-row', for: 'pref-email' }, email, 'Email me when something needs my action')),
     profileBody(p, { api, canPhoto: true, onChange: () => dispatchEvent(new HashChangeEvent('hashchange')) }));
   root.modern = true;
+  if (new URLSearchParams(query).get('edit') === '1') setTimeout(() => editMine(api, p), 0);
   return root;
 }
 

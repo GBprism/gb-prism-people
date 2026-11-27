@@ -32,7 +32,7 @@ export const PAGES = [
   { key: 'history', re: /^#\/history$/, href: '#/history', title: 'My reviews', icon: 'clipboard-check', area: 'growth', tab: 'Reviews & goals', desc: 'Your goals and reviews across cycles, and next year’s plan' },
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', area: 'growth', tabOf: 'history', desc: null },
   { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', area: 'growth', tab: 'Training', desc: 'Your courses, hours and certificates' },
-  { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', area: 'growth', tab: 'Profile & CV', desc: 'Your employment details, benefits and CV — visible to you, People Ops and partners only' },
+  { key: 'profile', re: /^#\/profile(\?.*)?$/, href: '#/profile', title: 'My profile', icon: 'id-card', area: 'growth', tab: 'Profile & CV', desc: 'Your employment details, benefits and CV — visible to you, People Ops and partners only' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', area: 'growth', tab: 'AI examples', desc: 'Examples of AI-assisted work and seat confirmations' },
   // ---- Company
   { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', area: 'company', tab: 'Team', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
@@ -201,6 +201,8 @@ export function mountShell({ me, api, onSignOut }) {
       ...people.map((u) => ({ group: 'People', label: u.name, sub: 'Team directory', iconName: 'user', href: '#/team' })),
       { group: 'Actions', label: 'Request time off', iconName: 'plus', href: '#/timeoff' },
       { group: 'Actions', label: 'Submit an expense', iconName: 'plus', href: '#/expenses' },
+      { group: 'Actions', label: 'Edit my profile & CV', iconName: 'pencil', href: '#/profile?edit=1' },
+      { group: 'Actions', label: 'Update my projects', iconName: 'briefcase', href: '#/active' },
       { group: 'Actions', label: 'Sign out', iconName: 'log-out', run: onSignOut },
     ];
     const inputEl = h('input', { type: 'text', placeholder: 'Search people, projects, policies and tasks…', 'aria-label': 'Search', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', autocomplete: 'off' });

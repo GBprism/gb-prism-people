@@ -3,7 +3,7 @@
 import { h, icon, button, badge, card, emptyState, filterChips, field, input, select, textarea, toast, promptModal, confirmModal, openDrawer } from '/ui.js';
 
 const money = (x100, cur = 'JOD') => `${(x100 / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
-const STATUS = { draft: ['Draft', 'neutral'], submitted: ['Awaiting approval', 'info'], approved: ['Approved', 'success'], rejected: ['Rejected', 'danger'], paid: ['Paid', 'success'] };
+const STATUS = { draft: ['Draft — not sent', 'neutral'], submitted: ['Awaiting approval', 'info'], approved: ['Approved', 'success'], rejected: ['Rejected', 'danger'], paid: ['Paid', 'success'] };
 const fmt = (s) => (s ? new Date(s.length === 10 ? `${s}T00:00:00` : s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export async function expensesScreen({ api, me, query = '' }) {
@@ -17,7 +17,12 @@ export async function expensesScreen({ api, me, query = '' }) {
     h('div', { class: 'eng-main' }, h('button', { type: 'button', class: 'link-btn', onclick: onOpen }, h('strong', {}, c.title)),
       h('div', { class: 'eng-meta muted' }, c.employee && tab !== 'mine' ? h('span', {}, icon('user'), ' ', c.employee) : null, h('span', {}, `${c.lines} line${c.lines === 1 ? '' : 's'}`),
         c.submitted_at ? h('span', {}, `Submitted ${fmt(c.submitted_at)}`) : h('span', {}, `Started ${fmt(c.created_at)}`))),
-    h('div', { class: 'eng-side' }, h('strong', {}, money(c.total_x100, c.currency)), badge(...(STATUS[c.status] || [c.status, 'neutral']))));
+    h('div', { class: 'eng-side' }, h('strong', {}, money(c.total_x100, c.currency)), badge(...(STATUS[c.status] || [c.status, 'neutral'])),
+      // your own drafts: edit and send from the list; a submitted claim can be pulled back to edit
+      tab === 'mine' && c.status === 'draft' ? [button('Edit', { size: 'sm', iconName: 'pencil', onClick: onOpen }),
+        c.lines ? button('Submit for approval', { size: 'sm', variant: 'primary', iconName: 'send', onClick: async () => { try { await api(`/api/expenses/${c.id}/submit`, { method: 'POST' }); toast('Submitted for approval'); draw(); } catch (e) { toast(e.message, 'danger'); } } })
+          : h('span', { class: 'muted hint-inline' }, 'Add an expense to submit')] : null,
+      tab === 'mine' && c.status === 'submitted' ? button('Withdraw to edit', { size: 'sm', variant: 'ghost', iconName: 'rotate-ccw', onClick: async () => { try { await api(`/api/expenses/${c.id}/cancel`, { method: 'POST', body: {} }); toast('Back to draft — edit and submit again'); draw(); } catch (e) { toast(e.message, 'danger'); } } }) : null));
 
   async function openClaim(id) {
     const c = await api(`/api/expenses/${id}`);

@@ -510,6 +510,15 @@ export const MIGRATIONS = [
      description TEXT, added_by TEXT NOT NULL, created_at TEXT NOT NULL);
    CREATE INDEX bookings_user ON resource_bookings(user_id, start_date);
    CREATE INDEX trainings_user ON trainings(user_id);`,
+
+  // ---- 021 employees propose changes to their own projects; the lead (or a partner) approves --------
+  `CREATE TABLE assignment_requests (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), project_id TEXT NOT NULL REFERENCES projects(id),
+     assignment_id TEXT REFERENCES project_assignments(id), kind TEXT NOT NULL CHECK (kind IN ('join','leave','role')),
+     role TEXT, start_date TEXT, end_date TEXT, note TEXT,
+     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined','withdrawn')),
+     decided_by TEXT, decided_at TEXT, decision_note TEXT, created_at TEXT NOT NULL);
+   CREATE INDEX assignment_requests_open ON assignment_requests(tenant_id, status);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {
