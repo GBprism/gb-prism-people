@@ -6,7 +6,7 @@ const STEPS = [
   { sel: null, icon: 'party-popper', title: 'Welcome to GB People', text: 'This is GB Advisory’s workspace: your projects, time, requests, reviews and company knowledge. This short tour takes a minute.' },
   { sel: 'a.nav-item[href="#/"]', icon: 'house', title: 'Home', text: 'What needs you now, your week ahead and your projects. Start here every morning.' },
   { sel: 'a.nav-item[href="#/active"]', icon: 'briefcase', title: 'My Work', text: 'Your engagements and their milestones, your monthly timesheet, requests (leave, expenses, gym allowance, letters) and messages.' },
-  { sel: 'a.nav-item[href="#/history"]', icon: 'trending-up', title: 'My Growth', text: 'Your goals and reviews, training and certificates, your profile and CV, and AI examples.' },
+  { sel: 'a.nav-item[href="#/performance"]', icon: 'trending-up', title: 'My Growth', text: 'Your priorities, feedback and results, earlier reviews, training, your profile and CV, and AI examples.' },
   { sel: 'a.nav-item[href="#/team"]', icon: 'building-2', title: 'Company', text: 'Who is who, the library of past work and the toolkit, policies to acknowledge, deliverable checklists, the company profile and onboarding.' },
   { sel: '.ws-switch', icon: 'users', title: 'Your other workspaces', text: 'Approvals, team reviews and the resource calendar are in Manager; People Ops tools are in Admin. Your own tasks stay on Home.' },
   { sel: '.search-trigger', icon: 'search', title: 'Find anything', text: 'Search people, projects, policies and tasks — or press Ctrl K (⌘K on a Mac). Restart this tour from Help in your account menu.' },

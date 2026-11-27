@@ -9,6 +9,8 @@ import { myProfileScreen, peopleScreen } from '/screens/people.js';
 import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
 import { approvalsScreen, teamReviewsScreen } from '/screens/manager.js';
 import { recordsScreen, myRecordScreen } from '/screens/records.js';
+import { myPerformanceScreen, perfReviewScreen, teamPerformanceScreen } from '/screens/perf.js';
+import { perfSetupScreen, calibrationScreen, promotionsScreen, compensationScreen, perfImportScreen } from '/screens/perfadmin.js';
 import { projectScreen } from '/screens/project.js';
 import { boardScreen } from '/screens/board.js';
 import { discussionScreen } from '/screens/discussion.js';
@@ -67,9 +69,10 @@ function errorBox(e) {
 // --------------------------------------------------------------- shell --
 let ME = null;
 const routes = [
-  [/^#\/?$/, home], [/^#\/admin\/records(?:\?(.*))?$/, (query) => recordsScreen({ api, query })], [/^#\/my-record$/, () => myRecordScreen({ api })], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
+  [/^#\/?$/, home], [/^#\/performance$/, () => myPerformanceScreen({ api })], [/^#\/performance\/review\/([\w-]+)$/, (id) => perfReviewScreen({ api, id })], [/^#\/manager\/performance(?:\?(.*))?$/, (query) => teamPerformanceScreen({ api, me: ME, query })],
+  [/^#\/admin\/performance$/, () => perfSetupScreen({ api })], [/^#\/admin\/calibration$/, () => calibrationScreen({ api })], [/^#\/admin\/promotions$/, () => promotionsScreen({ api })], [/^#\/admin\/compensation$/, () => compensationScreen({ api, me: ME })], [/^#\/admin\/pms-history$/, () => perfImportScreen({ api })], [/^#\/admin\/records(?:\?(.*))?$/, (query) => recordsScreen({ api, query })], [/^#\/my-record$/, () => myRecordScreen({ api })], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
   [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/project\/([\w-]+)\/board(?:\?(.*))?$/, (id, query) => boardScreen({ api, me: ME, id, query })],
-  [/^#\/project\/([\w-]+)\/discussion(?:\?(.*))?$/, (id, query) => discussionScreen({ api, me: ME, id, query })], [/^#\/card\/([\w-]+)$/, openCardLink], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
+  [/^#\/project\/([\w-]+)\/discussion(?:\?(.*))?$/, (id, query) => discussionScreen({ api, me: ME, id, query })], [/^#\/card\/([\w-]+)$/, openCardLink], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id, me: ME })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],
   [/^#\/profile(?:\?(.*))?$/, (query) => myProfileScreen({ api, query })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],

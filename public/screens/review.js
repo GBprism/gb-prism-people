@@ -10,7 +10,7 @@ const TONE = { closed: 'success', acknowledged: 'success', released: 'info', par
 const fmt = (s) => (s ? new Date(s.length === 10 ? `${s}T00:00:00` : s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const rerender = () => dispatchEvent(new HashChangeEvent('hashchange'));
 
-export async function reviewScreen({ api, id }) {
+export async function reviewScreen({ api, id, me = null }) {
   const v = await api(`/api/plans/${id}`);
   const a = v.access;
   if (a.relation === 'project_lead') return leadFeedbackScreen({ api, v });
@@ -173,10 +173,15 @@ export async function reviewScreen({ api, id }) {
     go(primary, 'Submit to partner calibration', () => api(`/api/plans/${id}/manager/submit`, { method: 'POST' }), { iconName: 'send', confirm: { title: 'Submit for partner calibration?', text: 'Every section must be rated. Partners calibrate and release the result.', confirmLabel: 'Submit' } });
     go(secondary, 'Return to employee', (r) => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: r } }), { iconName: 'rotate-ccw', ask: { title: 'Return to the employee', label: 'Why are you returning it?', confirmLabel: 'Return', tone: 'danger' } });
   }
-  if (calib) {
-    go(primary, 'Release result', () => api(`/api/plans/${id}/release`, { method: 'POST', body: { note: 'Calibrated' } }), { iconName: 'send', confirm: { title: `Release ${v.employee.name}’s result?`, text: 'They will see their final score and can acknowledge it.', confirmLabel: 'Release' } });
-    go(secondary, 'Return to manager', (r) => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: r } }), { iconName: 'rotate-ccw', ask: { title: 'Return to the manager', label: 'Why are you returning it?', confirmLabel: 'Return', tone: 'danger' } });
+  if (calib && v.founder_confirmations) {
+    const fc = v.founder_confirmations;
+    if (!fc.needed.find((f) => f.id === me?.id)?.confirmed_at) go(primary, 'Confirm final result', () => api(`/api/plans/${id}/confirm`, { method: 'POST' }), { iconName: 'check', confirm: { title: `Confirm ${v.employee.name}’s final result?`, text: 'The result is released only after every founder confirms these exact final ratings. Any later change needs confirming again.', confirmLabel: 'Confirm' }, done: 'Confirmed' });
+    primary.push(h('span', { class: 'muted founder-confirm' }, fc.needed.map((f) => `${f.confirmed_at ? '✓' : '·'} ${f.name}`).join('   ')));
   }
+  if (calib && v.founder_confirmations?.complete) {
+    go(primary, 'Release result', () => api(`/api/plans/${id}/release`, { method: 'POST', body: { note: 'Calibrated' } }), { iconName: 'send', confirm: { title: `Release ${v.employee.name}’s result?`, text: 'They will see their final score and can acknowledge it.', confirmLabel: 'Release' } });
+  }
+  if (calib) go(secondary, 'Return to manager', (r) => api(`/api/plans/${id}/return`, { method: 'POST', body: { reason: r } }), { iconName: 'rotate-ccw', ask: { title: 'Return to the manager', label: 'Why are you returning it?', confirmLabel: 'Return', tone: 'danger' } });
   if (a.relation === 'self' && v.state === 'released') go(primary, 'Acknowledge receipt', (c) => api(`/api/plans/${id}/acknowledge`, { method: 'POST', body: { comment: c || null } }), { iconName: 'check', ask: { title: 'Acknowledge your result', text: 'Acknowledging receipt is not the same as agreeing.', label: 'Comment (optional)', required: false, confirmLabel: 'Acknowledge' } });
   if (a.relation === 'reviewer' && v.state === 'acknowledged') go(primary, 'Close review', () => api(`/api/plans/${id}/close`, { method: 'POST' }), { iconName: 'check' });
   if (['self', 'reviewer'].includes(a.relation) && ['approved_plan', 'self_assessment', 'closed', 'acknowledged'].includes(v.state)) go(secondary, 'Log check-in', (n) => api(`/api/plans/${id}/check-ins`, { method: 'POST', body: { kind: 'quarterly', heldOn: new Date().toISOString().slice(0, 10), note: n || '' } }), { iconName: 'calendar-check', ask: { title: 'Log a check-in', label: 'Notes', required: false, confirmLabel: 'Save' }, done: 'Check-in logged' });

@@ -34,7 +34,7 @@ test('2026 review end to end: self → manager → calibration → released → 
   assert.equal(v.items[0].manager_rating, 3);
   assert.equal(v.items[0].calibrated_rating, 4);
   assert.equal(v.scores.self.rounded, 4); // self stays independent
-  perf.release(db, partner, PLAN, { note: 'Calibrated' });
+  perf.confirmFinal(db, partner, PLAN); perf.release(db, partner, PLAN, { note: 'Calibrated' });
   // consultant template: objective 50/50 → (4*.5+3*.5)=3.5 ; comp 3 ; init 3 → 3.5*.4 + 3*.4 + 3*.2 = 3.2
   v = perf.planView(db, emp, PLAN);
   assert.equal(v.outcome.final_score, 3.2);
@@ -80,7 +80,7 @@ test('reopen after release is restricted, needs a reason, and keeps a snapshot',
   const { db, as } = fresh();
   runToCalibration(db, as);
   const partner = as(SYN.partner);
-  perf.release(db, partner, PLAN);
+  perf.confirmFinal(db, partner, PLAN); perf.release(db, partner, PLAN);
   assert.throws(() => perf.reopen(db, as(SYN.manager), PLAN, { reason: 'x' }), /partner|granted/i);
   assert.throws(() => perf.reopen(db, as(SYN.ops), PLAN, { reason: 'x' }), /Not permitted|partner/); // ops without grant
   assert.throws(() => perf.reopen(db, partner, PLAN, {}), /reason/);
@@ -155,7 +155,7 @@ test('2027 plan from role defaults with selected carry-forward; fresh targets an
   const { db, as } = fresh();
   runToCalibration(db, as);
   const partner = as(SYN.partner); const mgr = as(SYN.manager); const emp = as(SYN.emp);
-  perf.release(db, partner, PLAN);
+  perf.confirmFinal(db, partner, PLAN); perf.release(db, partner, PLAN);
   perf.acknowledge(db, emp, PLAN, {});
   const act = perf.addDevelopmentAction(db, mgr, PLAN, { kind: 'improvement', title: 'Client communication', ownerId: SYN.emp, dueDate: '2027-06-30' });
   perf.closePlan(db, mgr, PLAN);
@@ -225,4 +225,25 @@ test('input requests: lead reviewer can withdraw an unanswered one; answered inp
   perf.addInput(db, as(SYN.am), PLAN, { body: 'Solid analysis on Alpha' });
   assert.throws(() => perf.removeInputInvite(db, mgr, PLAN, { inviteeId: SYN.am }), /already given/);
   assert.deepEqual(perf.planView(db, mgr, PLAN).input_invites.map((i) => i.name), ['Adam Assistant']);
+});
+
+test('2026 release: both founders confirm the exact final ratings; a later change needs confirming again', () => {
+  const { db, as } = fresh();
+  db.prepare("INSERT OR IGNORE INTO user_roles (user_id, role) VALUES (?, 'partner')").run(SYN.unrelated); // the second founder
+  const f1 = as(SYN.partner); const f2 = as(SYN.unrelated);
+  runToCalibration(db, as);
+  assert.throws(() => perf.release(db, f1, PLAN), /Both founders must confirm/);
+  assert.throws(() => perf.confirmFinal(db, as(SYN.manager), PLAN), /Only the founders/);
+  perf.confirmFinal(db, f1, PLAN);
+  assert.throws(() => perf.release(db, f1, PLAN), /Both founders must confirm/);
+  perf.confirmFinal(db, f2, PLAN);
+  // a calibration change after confirming invalidates both confirmations
+  const it = perf.planView(db, f1, PLAN).items[0];
+  perf.calibrateItem(db, f1, PLAN, it.id, { calibrated_rating: 4, reason: 'New evidence' });
+  assert.equal(perf.planView(db, f1, PLAN).founder_confirmations.complete, false);
+  assert.throws(() => perf.release(db, f1, PLAN), /Both founders must confirm/);
+  assert.equal(perf.planView(db, as(SYN.emp), PLAN).outcome?.final_score ?? null, null, 'the employee sees no result yet');
+  perf.confirmFinal(db, f1, PLAN); perf.confirmFinal(db, f2, PLAN);
+  perf.release(db, f1, PLAN); // released by the review's partner, after both confirmed
+  assert.ok(perf.planView(db, as(SYN.emp), PLAN).outcome.final_score);
 });
