@@ -20,6 +20,7 @@ db.exec('BEGIN');
 try { report = applyActiveProjects(db, actor, file, { asOf: arg('as-of') || file.as_of || undefined }); db.exec(apply ? 'COMMIT' : 'ROLLBACK'); } catch (e) { db.exec('ROLLBACK'); console.error(e.message); process.exit(1); }
 const section = (t, rows) => { if (rows.length) { console.log(`\n${t}`); for (const r of rows) console.log(`  ${r}`); } };
 section('Active projects', report.projects); section('People', report.people); section('No longer running (marked completed)', report.closed);
+section('Library', report.library);
 section('Still "running" in the Library but not on your list (not changed — update in Library if finished)', report.library_still_running);
 section('Check', report.warnings);
 console.log(apply ? '\nSaved.' : '\nDry run: nothing saved. Add --apply to save.');
