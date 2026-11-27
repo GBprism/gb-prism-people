@@ -46,6 +46,8 @@ export function gymDecided(db, g) {
 /** A new message: email members who have not read the conversation, at most one email per conversation per hour. */
 export function messageSent(db, conversationId, senderId) {
   const c = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+  // project discussions stay quiet: only @mentions send an email (handled when the message is sent)
+  if (String(c.direct_key || '').startsWith('project:')) return;
   const hour = new Date().toISOString().slice(0, 13);
   const others = db.prepare('SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?').all(conversationId, senderId).map((r) => r.user_id);
   notify(db, { tenantId: c.tenant_id, to: others, event: 'message', key: `${conversationId}:${hour}`, link: `#/messages?c=${conversationId}`, subject: `New message from ${name(db, senderId)}${c.kind === 'group' && c.title ? ` in ${c.title}` : ''}`, text: `${name(db, senderId)} sent you a message in GB People.` });

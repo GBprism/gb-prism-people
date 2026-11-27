@@ -212,3 +212,16 @@ Read the report, then run the same command with `--apply` at the end.
 **Employees keep it current.** My Work → Projects → **Update my projects**: join a running project (with their role), mark one they have left (last day), or correct their role. Each change goes to the project lead — or to partners and People Ops when there is no lead or the lead is asking — in Manager → Approvals, with an email. Declines need a reason, which the employee sees.
 
 **Photos** are shown in black and white everywhere in the portal, and the stored photos (used on CV slides) are black and white from the private bundle.
+
+## Engagement board and project discussion
+
+Nothing to configure: migration 022 runs on start. Each engagement under My Work → Projects has **Overview**, **Board** and **Discussion**.
+
+- **Board.** Cards are the project's deliverables, so the register, the project page, Home and reminders all show the same record. Columns: To do → In progress → Internal review → Ready to send → Done. *Blocked* is a flag with a reason.
+  - Moving to Internal review needs a complete checklist and a reviewer (the card's reviewer, else the project lead). The owner cannot review their own work.
+  - Only the reviewer, the lead, a partner or People Ops can pass a review (Ready to send) or mark a card Done.
+  - Moves change only the internal workflow; sending to the client stays outside the board.
+  - Cards move by drag-and-drop, by the Status control in the card (phone and keyboard), or with Alt + ←/→ on a focused card. A move that fails is undone on screen with the reason.
+- **Discussion.** The project's discussion is the same conversation as in Messages. It has replies in threads, @mentions (only of people on the engagement), #card links, *Create task from message* (the task links back to the message) and *Pin as a decision* (lead, partners, People Ops).
+- **Alerts.** Emails go out for an assignment, a review request, changes requested, a review passed, @mentions, and due tomorrow / overdue (once each). Routine moves and ordinary discussion send nothing; one action never emails the same person twice. Home shows your due tasks, the reviews asked of you and unread mentions, each linking to the exact card or thread.
+- **Access.** Boards, cards, comments, threads, search results, alerts and deep links are limited to the project's lead and current team, partners and People Ops. Anyone else gets "not found". Drive links open with the file's own Google sharing.

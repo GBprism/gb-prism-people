@@ -8,7 +8,7 @@ const fmt = (s) => (s ? d0(s).toLocaleDateString('en-GB', { day: 'numeric', mont
 const fmtShort = (s) => d0(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Amman' }).format(new Date());
 const cap = (s) => (s ? s.replace(/^\w/, (c) => c.toUpperCase()) : s);
-const STATUS = { in_progress: ['In progress', 'info'], submitted: ['In quality review', 'warning'], accepted: ['Done', 'success'], done: ['Done', 'success'], cancelled: ['Cancelled', 'neutral'] };
+const STATUS = { todo: ['To do', 'neutral'], in_progress: ['In progress', 'info'], submitted: ['Internal review', 'warning'], ready: ['Ready to send', 'success'], accepted: ['Done', 'success'], done: ['Done', 'success'], cancelled: ['Cancelled', 'neutral'] };
 const ASG = { confirmed: null, historical: null, tentative: 'To be confirmed by the lead', provisional: 'Not yet confirmed' };
 
 /** Percent position of a date inside [from, to]. */
@@ -62,18 +62,25 @@ function timeline(v, today) {
       rows)));
 }
 
+/** Header shared by an engagement's Overview, Board and Discussion: back link, name, client, team, tabs. */
+export function engagementHeader(v, tab, people = []) {
+  const photo = (m) => people.find((p) => p.id === m.id) || m;
+  const tabs = [['overview', 'Overview', `#/project/${v.id}`], ['board', 'Board', `#/project/${v.id}/board`], ['discussion', 'Discussion', `#/project/${v.id}/discussion`]];
+  return h('header', { class: 'proj-head' },
+    h('a', { class: 'back-link', href: '#/active' }, icon('chevron-left', { flip: true }), 'Projects'),
+    h('div', { class: 'proj-title-row' },
+      h('div', { class: 'proj-titles' }, h('h1', {}, v.name), h('p', { class: 'muted' }, [v.client, v.sector, v.country].filter(Boolean).join(' · ') || 'Client not recorded')),
+      v.team?.length ? h('ul', { class: 'face-stack', 'aria-label': `Team: ${v.team.map((m) => m.name).join(', ')}` }, v.team.slice(0, 6).map((m) => h('li', { title: m.name }, avatar(photo(m), 'sm'))), v.team.length > 6 ? h('li', { class: 'face-more' }, `+${v.team.length - 6}`) : null) : null),
+    v.full ? h('nav', { class: 'section-tabs eng-tabs', 'aria-label': 'Engagement' }, tabs.map(([k, label, href]) => h('a', { class: 'section-tab', href, 'aria-current': k === tab ? 'page' : null }, label))) : null);
+}
+
 export async function projectScreen({ api, me, id }) {
   const v = await api(`/api/projects/${encodeURIComponent(id)}/overview`);
   const today = todayIso();
   const people = await api('/api/team').catch(() => []);
   const photo = (m) => people.find((p) => p.id === m.id) || m;
 
-  // ---- header: back, name, client; team faces
-  const head = h('header', { class: 'proj-head' },
-    h('a', { class: 'back-link', href: '#/active' }, icon('chevron-left', { flip: true }), 'Projects'),
-    h('div', { class: 'proj-title-row' },
-      h('div', { class: 'proj-titles' }, h('h1', {}, v.name), h('p', { class: 'muted' }, [v.client, v.sector, v.country].filter(Boolean).join(' · ') || 'Client not recorded')),
-      v.team.length ? h('ul', { class: 'face-stack', 'aria-label': `Team: ${v.team.map((m) => m.name).join(', ')}` }, v.team.slice(0, 6).map((m) => h('li', { title: m.name }, avatar(photo(m), 'sm'))), v.team.length > 6 ? h('li', { class: 'face-more' }, `+${v.team.length - 6}`) : null) : null));
+  const head = engagementHeader(v, 'overview', people);
 
   // ---- facts: lead, my assignment, dates
   const mine = v.me;
@@ -99,7 +106,8 @@ export async function projectScreen({ api, me, id }) {
     v.drive_url ? h('a', { class: 'btn btn-primary', href: v.drive_url, target: '_blank', rel: 'noopener' }, icon('folder-open'), h('span', {}, 'Open the Drive folder')) : null,
     v.chat_url ? h('a', { class: 'text-link', href: v.chat_url, target: '_blank', rel: 'noopener' }, 'Team chat', icon('external-link')) : null,
     v.meet_url ? h('a', { class: 'text-link', href: v.meet_url, target: '_blank', rel: 'noopener' }, 'Standing Meet', icon('external-link')) : null,
-    v.can.register ? h('a', { class: 'text-link', href: `#/projects?p=${v.id}` }, 'Deliverables & contributions', icon('arrow-right')) : null,
+    v.full ? h('a', { class: 'text-link', href: `#/project/${v.id}/board` }, 'Open the board', icon('arrow-right')) : null,
+    v.can.register ? h('a', { class: 'text-link', href: `#/projects?p=${v.id}` }, 'Contributions & register', icon('arrow-right')) : null,
     v.can.closeout ? h('a', { class: 'text-link', href: `#/library?closeout=${v.engagement_id}` }, 'Close-out', icon('arrow-right')) : null,
     v.can.commercial ? h('a', { class: 'text-link', href: `#/commercial?p=${v.id}` }, 'Budget & burn', icon('arrow-right')) : null);
 
@@ -110,7 +118,7 @@ export async function projectScreen({ api, me, id }) {
     h('header', { class: 'card-header' }, h('h2', { id: 'dl-h' }, 'Workstreams & deliverables')),
     h('div', { class: 'card-body flush' }, v.deliverables.length ? [...groups].map(([ws, list]) => h('div', { class: 'ws-group' }, groups.size > 1 || ws !== 'Deliverables' ? h('h3', { class: 'ws-title' }, ws) : null,
       h('ul', { class: 'del-list' }, list.map((d) => { const [lab, tone] = STATUS[d.status] || [cap(d.status), 'neutral']; const late = d.due_date && d.due_date < today && !['accepted', 'done', 'cancelled'].includes(d.status);
-        return h('li', { class: 'del-row' }, h('span', { class: 'del-name' }, h('strong', {}, d.title), d.milestone && d.milestone !== d.title ? h('span', { class: 'muted' }, d.milestone) : null),
+        return h('li', { class: 'del-row' }, h('span', { class: 'del-name' }, h('a', { class: 'del-link', href: `#/project/${v.id}/board?card=${d.id}` }, d.title), d.milestone && d.milestone !== d.title ? h('span', { class: 'muted' }, d.milestone) : null),
           h('span', { class: `del-due${late ? ' is-late' : ''}` }, d.due_date ? (late ? `Overdue · ${fmtShort(d.due_date)}` : fmtShort(d.due_date)) : h('span', { class: 'muted' }, 'No date')),
           badge(lab, tone), d.drive_url ? h('a', { class: 'btn btn-ghost btn-sm btn-icon', href: d.drive_url, target: '_blank', rel: 'noopener', 'aria-label': `Open ${d.title} in Drive` }, icon('external-link')) : h('span', { class: 'del-spacer' })); }))))
       : emptyState({ iconName: 'file-text', title: 'No deliverables recorded yet', text: 'The project lead adds deliverables and due dates; they appear here and on the timeline.', action: v.can.register ? button('Add deliverables', { iconName: 'plus', href: `#/projects?p=${v.id}` }) : null }))) : null;

@@ -1,5 +1,6 @@
 // Messages: direct and group conversations between colleagues. Only members can read them.
 import { h, icon, button, badge, emptyState, field, input, select, toast, openDrawer, avatar } from '/ui.js';
+import { renderRich } from '/rich.js';
 
 const when = (iso) => { const d = new Date(iso); const today = new Date().toDateString() === d.toDateString();
   return today ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
@@ -24,13 +25,13 @@ export async function messagesScreen({ api, me, query = '' }) {
       : [h('li', { class: 'muted conv-empty' }, 'No conversations yet. Start one with “New message”.')]));
   }
 
-  const bubble = (m) => h('div', { class: `bubble${m.mine ? ' mine' : ''}` }, m.mine ? null : h('span', { class: 'bubble-who' }, m.sender), h('p', {}, m.body), h('time', { datetime: m.created_at }, when(m.created_at)));
+  const bubble = (m) => h('div', { class: `bubble${m.mine ? ' mine' : ''}` }, m.mine ? null : h('span', { class: 'bubble-who' }, m.sender), h('p', {}, renderRich(m.body, { people: [...people, { id: me.id, name: me.name }] })), m.replies ? h('span', { class: 'muted bubble-replies' }, `${m.replies} repl${m.replies === 1 ? 'y' : 'ies'} in the thread`) : null, h('time', { datetime: m.created_at }, when(m.created_at)));
   async function open(id, poll = false) {
     current = id; history.replaceState(null, '', `#/messages?c=${id}`);
     const r = await api(`/api/messages/${id}${poll && last ? `?after=${encodeURIComponent(last)}` : ''}`);
     const c = convs.find((x) => x.id === id);
     if (!poll) {
-      head.replaceChildren(h('strong', {}, c?.title || 'Conversation'), c ? h('span', { class: 'muted' }, c.people.map((p) => p.name).join(', ')) : null);
+      head.replaceChildren(h('strong', {}, c?.title || 'Conversation'), c?.project_id ? h('a', { class: 'text-link', href: `#/project/${c.project_id}/discussion` }, 'Project discussion — open with threads, pins and tasks', icon('arrow-right')) : c ? h('span', { class: 'muted' }, c.people.map((p) => p.name).join(', ')) : null);
       thread.replaceChildren(...(r.messages.length ? r.messages.map(bubble) : [h('p', { class: 'muted thread-empty' }, 'Say hello 👋')]));
       root.classList.add('has-thread');
     } else if (r.messages.length) { thread.querySelector('.thread-empty')?.remove(); thread.append(...r.messages.map(bubble)); }

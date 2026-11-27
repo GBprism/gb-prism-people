@@ -21,7 +21,8 @@ export const PAGES = [
   // ---- My Work
   { key: 'active', re: /^#\/active$/, href: '#/active', title: 'Projects', icon: 'briefcase', area: 'work', tab: 'Projects', desc: 'The engagements you work on and everything running at GB' },
   { key: 'project', re: /^#\/project\//, title: 'Project', icon: 'briefcase', area: 'work', tabOf: 'active', desc: null },
-  { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Deliverables & contributions', icon: 'folder-kanban', area: 'work', tabOf: 'active', desc: 'Deliverables, who contributed what, and the project register' },
+  { key: 'card', re: /^#\/card\//, title: 'Task', icon: 'list-checks', area: 'work', tabOf: 'active', desc: null },
+  { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Contributions & register', icon: 'folder-kanban', area: 'work', tabOf: 'active', desc: 'Deliverables, who contributed what, and the project register' },
   { key: 'timesheet', re: /^#\/timesheet(\?.*)?$/, href: '#/timesheet', title: 'Timesheet', icon: 'timer', area: 'work', tab: 'Timesheet', desc: 'Your monthly hours by project — drafted for you from your assignments and leave' },
   { key: 'requests', re: /^#\/requests$/, href: '#/requests', title: 'Requests', icon: 'send', area: 'work', tab: 'Requests', desc: 'Leave, expenses, the gym allowance and HR letters' },
   { key: 'timeoff', re: /^#\/timeoff$/, href: '#/timeoff', title: 'Time off', icon: 'calendar-days', area: 'work', tabOf: 'requests', desc: 'Request leave or off-site work and see who is away' },
@@ -194,7 +195,8 @@ export function mountShell({ me, api, onSignOut }) {
     let projects = [];
     try { projects = await api('/api/active-projects'); } catch { /* optional */ }
     const pages = PAGES.filter((p) => p.href && allowed(p, me));
-    const entries = [
+    let remote = []; let seq = 0;
+    const base = [
       ...inboxItems.map((i) => ({ group: i.scope === 'team' ? 'Waiting for your decision' : 'Your tasks', label: i.title, sub: i.kind, iconName: 'inbox', href: i.link })),
       ...pages.map((p) => ({ group: 'Pages', label: p.title, sub: p.desc, iconName: p.icon, href: p.href })),
       ...projects.map((p) => ({ group: 'Projects', label: p.name, sub: [p.client_name, p.lead_name ? `Lead ${p.lead_name}` : null].filter(Boolean).join(' · '), iconName: 'briefcase', href: `#/project/${p.id}` })),
@@ -205,13 +207,27 @@ export function mountShell({ me, api, onSignOut }) {
       { group: 'Actions', label: 'Update my projects', iconName: 'briefcase', href: '#/active' },
       { group: 'Actions', label: 'Sign out', iconName: 'log-out', run: onSignOut },
     ];
+    const entriesNow = () => [...remote, ...base];
+    // tasks and project discussion: asked from the server, which returns only what this person may open
+    const searchRemote = async (q) => {
+      const n = ++seq;
+      if (q.length < 2) { remote = []; return; }
+      try {
+        const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
+        if (n !== seq) return;
+        remote = [...r.cards.map((c) => ({ group: 'Tasks', label: c.title, sub: `${c.project} · ${c.status}`, iconName: 'list-checks', href: c.link, remote: true })),
+          ...r.messages.map((m) => ({ group: 'Messages', label: m.snippet, sub: `${m.sender} · ${m.where}`, iconName: 'messages-square', href: m.link, remote: true }))];
+        draw();
+      } catch { /* offline */ }
+    };
     const inputEl = h('input', { type: 'text', placeholder: 'Search people, projects, policies and tasks…', 'aria-label': 'Search', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', autocomplete: 'off' });
     const list = h('ul', { class: 'palette-list', id: 'palette-list', role: 'listbox' });
     let active = 0; let shown = [];
     const draw = () => {
       const q = inputEl.value.trim().toLowerCase();
       const score = (e) => { const l = e.label.toLowerCase(); return l.startsWith(q) ? 0 : l.includes(q) ? 1 : `${e.sub || ''} ${e.group}`.toLowerCase().includes(q) ? 2 : 9; };
-      shown = !q ? entries.filter((e) => e.group !== 'People' && e.group !== 'Projects').slice(0, 40) : entries.map((e, i) => [score(e), i, e]).filter(([sc]) => sc < 9).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e).slice(0, 40);
+      const entries = entriesNow();
+      shown = !q ? entries.filter((e) => !e.remote && e.group !== 'People' && e.group !== 'Projects').slice(0, 40) : entries.map((e, i) => [e.remote ? Math.min(score(e), 1) : score(e), i, e]).filter(([sc]) => sc < 9).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e).slice(0, 40);
       active = Math.min(active, Math.max(0, shown.length - 1));
       let g = null; const kids = [];
       shown.forEach((e, i) => {
@@ -225,7 +241,8 @@ export function mountShell({ me, api, onSignOut }) {
     };
     const close = () => { palette?.remove(); scrimP.remove(); palette = null; };
     const choose = (e) => { close(); if (e.run) e.run(); else location.hash = e.href; };
-    inputEl.addEventListener('input', () => { active = 0; draw(); });
+    let deb;
+    inputEl.addEventListener('input', () => { active = 0; draw(); clearTimeout(deb); deb = setTimeout(() => searchRemote(inputEl.value.trim()), 200); });
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, shown.length - 1); draw(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); draw(); }

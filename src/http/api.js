@@ -9,6 +9,7 @@ import * as proj from '../domain/projects.js';
 import * as ai from '../domain/ai.js';
 import * as week from '../domain/myweek.js';
 import * as pchg from '../domain/projectchanges.js';
+import * as board from '../domain/board.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
 import * as lib from '../domain/library.js';
@@ -173,8 +174,9 @@ export function buildApi(db) {
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
     for (const r of pchg.pendingFor(db, actor)) items.push({ type: 'project_change', id: r.id, kind: 'Project change', title: `${r.person} — ${r.summary}`, note: r.note, link: '#/manager', state: 'Waiting for you' });
-    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist' };
-    return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review' }; });
+    for (const i of board.myCardItems(db, actor)) items.push(i);
+    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist', card: 'Open task', card_review: 'Review', mention: 'Open' };
+    return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: i.action || (scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review') }; });
   };
   r.get('/api/inbox', ({ actor, ctx }) => { const scope = q(ctx, 'scope'); const items = buildInbox(actor); return { items: scope ? items.filter((i) => i.scope === scope) : items }; });
 
@@ -530,8 +532,25 @@ export function buildApi(db) {
   r.get('/api/messages/unread', ({ actor }) => ({ unread: msg.unreadCount(db, actor) }));
   r.post('/api/messages/direct', ({ actor, body }) => msg.directWith(db, actor, body.userId));
   r.post('/api/messages/groups', ({ actor, body }) => msg.createGroup(db, actor, body));
-  r.get('/api/messages/:id', ({ actor, params, ctx }) => msg.readMessages(db, actor, params.id, { after: ctx.url.searchParams.get('after') }));
-  r.post('/api/messages/:id', ({ actor, params, body }) => { const o = msg.sendMessage(db, actor, params.id, body.text); ev.messageSent(db, params.id, actor.id); return o; });
+  r.get('/api/messages/:id', ({ actor, params, ctx }) => msg.readMessages(db, actor, params.id, { after: ctx.url.searchParams.get('after'), thread: ctx.url.searchParams.get('thread') }));
+  r.post('/api/messages/:id', ({ actor, params, body }) => { const o = msg.sendMessage(db, actor, params.id, body.text, { parentId: body.parentId || null, mentions: Array.isArray(body.mentions) ? body.mentions : [] }); ev.messageSent(db, params.id, actor.id); return o; });
+  r.post('/api/messages/:id/pin/:mid', ({ actor, params, body }) => msg.pinMessage(db, actor, params.id, params.mid, body?.pin !== false));
+
+  // ------------------------------------------------- engagement board --
+  r.get('/api/projects/:id/board', ({ actor, params }) => board.boardView(db, actor, params.id));
+  r.get('/api/projects/:id/people', ({ actor, params }) => { board.projectAccess(db, actor, params.id); return board.participants(db, params.id).map((id) => ({ id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(id).name })); });
+  r.get('/api/projects/:id/discussion', ({ actor, params }) => msg.projectConversation(db, actor, params.id));
+  r.post('/api/projects/:id/cards', ({ actor, params, body }) => board.createCard(db, actor, params.id, body || {}));
+  r.get('/api/cards/:id', ({ actor, params }) => board.cardDetail(db, actor, params.id));
+  r.patch('/api/cards/:id', ({ actor, params, body }) => board.updateCard(db, actor, params.id, body || {}));
+  r.post('/api/cards/:id/move', ({ actor, params, body }) => board.moveCard(db, actor, params.id, body || {}));
+  r.post('/api/cards/:id/block', ({ actor, params, body }) => board.setBlocked(db, actor, params.id, body || {}));
+  r.post('/api/cards/:id/checklist', ({ actor, params, body }) => board.addChecklistItem(db, actor, params.id, body || {}));
+  r.patch('/api/checklist/:id', ({ actor, params, body }) => board.setChecklistItem(db, actor, params.id, body || {}));
+  r.post('/api/cards/:id/links', ({ actor, params, body }) => board.addLink(db, actor, params.id, body || {}));
+  r.post('/api/card-links/:id/delete', ({ actor, params }) => board.removeLink(db, actor, params.id));
+  r.post('/api/cards/:id/comments', ({ actor, params, body }) => board.addComment(db, actor, params.id, body || {}));
+  r.get('/api/search', ({ actor, ctx }) => { const qq = String(q(ctx, 'q') || '').trim(); if (qq.length < 2) return { cards: [], messages: [] }; return { cards: board.searchCards(db, actor, qq), messages: msg.searchMessages(db, actor, qq) }; });
   r.post('/api/messages/:id/members', ({ actor, params, body }) => msg.addMembers(db, actor, params.id, body.userIds || []));
   r.post('/api/messages/:id/leave', ({ actor, params }) => msg.leaveConversation(db, actor, params.id));
   r.post('/api/plan-items/:id/strategy', ({ actor, params, body }) => lib.linkPlanItem(db, actor, params.id, body.kpiIds || []));
