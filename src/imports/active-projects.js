@@ -5,8 +5,12 @@
 //   - every other running engagement project is marked completed and its open assignments end yesterday,
 //     so timesheets stop drafting hours on it;
 //   - library engagements still "running" that are not on the list are reported, not changed.
-// Project leads are kept as they are. Dry run by default from the script.
+// A project's "lead" sets its lead; without one the lead is kept. Without "people" the team is kept as it is.
+// "library": { "status": { key: running|completed|on_hold }, "remove": [keys] } settles Library entries
+// (remove deletes an entry that never existed; entries a proposal or survey points to are put on hold instead).
+// Dry run by default from the script.
 import { uid, now, audit, bad } from '../db.js';
+import { ENGAGEMENT_STATUS } from '../domain/library.js';
 import { todayIn } from '../domain/dates.js';
 
 const yesterday = (d) => new Date(Date.parse(`${d}T00:00:00Z`) - 864e5).toISOString().slice(0, 10);
@@ -15,7 +19,7 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[–—-]/g, ' ').rep
 export function applyActiveProjects(db, actor, file, { asOf = todayIn() } = {}) {
   const T = actor.tenantId;
   if (!Array.isArray(file?.projects) || !file.projects.length) throw bad('The file lists no projects');
-  const report = { projects: [], people: [], closed: [], library_still_running: [], warnings: [] };
+  const report = { projects: [], people: [], closed: [], library: [], library_still_running: [], warnings: [] };
   const end = yesterday(asOf);
   const users = db.prepare('SELECT id, name, email FROM users WHERE tenant_id = ? AND active = 1').all(T);
   const person = (key) => users.find((u) => u.email.toLowerCase() === String(key).toLowerCase() || norm(u.name) === norm(key)) || null;
@@ -46,8 +50,14 @@ export function applyActiveProjects(db, actor, file, { asOf = todayIn() } = {}) 
       if (eng.status !== 'running') { db.prepare("UPDATE engagements SET status = 'running' WHERE id = ?").run(eng.id); report.projects.push(`  library: ${eng.title_en} marked running`); }
     }
     keep.add(p.id);
+    if (item.lead) {
+      const l = person(item.lead);
+      if (!l) report.warnings.push(`${item.name}: nobody active matches lead “${item.lead}”`);
+      else if (p.lead_user_id !== l.id) { db.prepare('UPDATE projects SET lead_user_id = ? WHERE id = ?').run(l.id, p.id); report.projects.push(`  lead: ${l.name}`); }
+    }
 
-    // the team: exactly the listed people from today
+    // the team: exactly the listed people from today (no list: keep the team as it is)
+    if (!Array.isArray(item.people)) { report.projects.push('  team kept as it is'); continue; }
     const listed = [];
     for (const key of item.people || []) {
       const u = person(key);
@@ -71,6 +81,24 @@ export function applyActiveProjects(db, actor, file, { asOf = todayIn() } = {}) 
       report.people.push(`${a.name} no longer on ${p.name} (ended ${end})`);
     }
     if (!lead) report.warnings.push(`${p.name} has no project lead — set one in Deliverables & contributions`);
+  }
+  for (const p of db.prepare(`SELECT name FROM projects WHERE id IN (${[...keep].map(() => '?').join(',')}) AND lead_user_id IS NULL`).all(...keep))
+    if (!report.warnings.some((w) => w.startsWith(p.name))) report.warnings.push(`${p.name} has no project lead — set one in Deliverables & contributions`);
+
+  // Library entries GB has settled
+  const lib = file.library || {};
+  for (const [key, status] of Object.entries(lib.status || {})) {
+    if (!ENGAGEMENT_STATUS.includes(status)) throw bad(`Library status for ${key} must be ${ENGAGEMENT_STATUS.join(', ')}`);
+    const e = db.prepare('SELECT id, title_en, status, project_id FROM engagements WHERE tenant_id = ? AND key = ?').get(T, key);
+    if (!e) { report.warnings.push(`Library: no entry ${key}`); continue; }
+    if (e.status !== status) { db.prepare('UPDATE engagements SET status = ?, updated_by = ?, updated_at = ? WHERE id = ?').run(status, actor.id, now(), e.id); report.library.push(`${e.title_en} (${key}): ${e.status} → ${status}`); }
+  }
+  for (const key of lib.remove || []) {
+    const e = db.prepare('SELECT id, title_en FROM engagements WHERE tenant_id = ? AND key = ?').get(T, key);
+    if (!e) continue;
+    const used = db.prepare('SELECT 1 FROM proposals WHERE engagement_id = ? UNION ALL SELECT 1 FROM surveys WHERE engagement_id = ? UNION ALL SELECT 1 FROM closeouts WHERE engagement_id = ?').get(e.id, e.id, e.id);
+    if (used) { db.prepare("UPDATE engagements SET status = 'on_hold' WHERE id = ?").run(e.id); report.library.push(`${e.title_en} (${key}): kept on hold — a proposal, survey or close-out points to it`); }
+    else { db.prepare('DELETE FROM engagements WHERE id = ?').run(e.id); report.library.push(`${e.title_en} (${key}): removed — it never existed`); }
   }
 
   // everything else that was running is now completed

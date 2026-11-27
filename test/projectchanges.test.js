@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { fresh, SYN } from './helpers.js';
 import * as pc from '../src/domain/projectchanges.js';
 import { applyActiveProjects } from '../src/imports/active-projects.js';
+import { applyLibrary } from '../src/domain/library.js';
 
 test('project changes: employee asks, the lead decides, the assignment follows', () => {
   const { db, as } = fresh();
@@ -53,4 +54,21 @@ test('active projects list: listed projects and people only; everything else com
   assert.ok(db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(nw.id, SYN.peer));
   assert.ok(r.warnings.some((w) => /nobody@example.test/.test(w)));
   assert.ok(r.closed.some((c) => /Project Alpha/.test(c)));
+});
+
+test('active projects list: leads, teams kept when no people are listed, Library statuses and removals', () => {
+  const { db, as } = fresh();
+  applyLibrary(db, as(SYN.ops), { clients: [{ key: 'acme', name_en: 'Acme' }], engagements: [
+    { key: 'e-run', client: 'acme', title_en: 'Running one', status: 'running' }, { key: 'e-ghost', client: 'acme', title_en: 'Never existed', status: 'running' }] });
+  const r = applyActiveProjects(db, as(SYN.partner), { projects: [
+    { name: 'Project Alpha — strategy', lead: 'Sara Senior' },
+    { name: 'Project Beta — feasibility', lead: 'eli@example.test', people: ['eli@example.test'] }],
+    library: { status: { 'e-run': 'on_hold' }, remove: ['e-ghost'] } }, { asOf: '2026-11-27' });
+  assert.equal(db.prepare("SELECT lead_user_id FROM projects WHERE id = 'prj_alpha'").get().lead_user_id, SYN.senior);
+  assert.notEqual(db.prepare("SELECT end_date FROM project_assignments WHERE id = 'asg_emp_alpha'").get().end_date, '2026-11-26', 'team kept');
+  assert.equal(db.prepare("SELECT lead_user_id FROM projects WHERE id = 'prj_beta'").get().lead_user_id, SYN.emp);
+  assert.equal(db.prepare("SELECT status FROM engagements WHERE key = 'e-run'").get().status, 'on_hold');
+  assert.equal(db.prepare("SELECT 1 FROM engagements WHERE key = 'e-ghost'").get(), undefined);
+  assert.ok(r.library.length === 2);
+  assert.throws(() => applyActiveProjects(db, as(SYN.partner), { projects: [{ name: 'x' }], library: { status: { 'e-run': 'stopped' } } }), /Library status/);
 });
