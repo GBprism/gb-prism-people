@@ -1,84 +1,123 @@
-// App shell: grouped sidebar (collapsible to an icon rail), top bar with
-// breadcrumbs, ⌘K command palette, inbox bell, help and the user menu.
-// Pure presentation — it only calls existing read endpoints (/api/inbox, /api/people).
+// App shell. Three workspaces, each with its own sidebar:
+//   My workspace — four destinations for everyone: Home, My Work, My Growth, Company
+//   Manager      — approvals, team reviews, resource calendar, pipeline, commercial (when authorised)
+//   Admin        — people, imports, policy settings, office, audit … (when authorised)
+// Pages inside a destination are reached from the section tabs at the top of the page.
+// The header holds one search (pages, people, tasks) and the account menu.
 import { h, icon, avatar, button, openDrawer } from '/ui.js';
 
-/** Route metadata: nav placement, page icon, breadcrumb and one-line description. */
+/** Destinations of "My workspace". */
+export const AREAS = {
+  home: { title: 'Home', icon: 'house', href: '#/' },
+  work: { title: 'My Work', icon: 'briefcase', href: '#/active' },
+  growth: { title: 'My Growth', icon: 'trending-up', href: '#/history' },
+  company: { title: 'Company', icon: 'building-2', href: '#/team' },
+};
+const isMgr = (me) => !!me.nav.manager;
+
+/** Every route: workspace area, tab placement, icon and one-line description. */
 export const PAGES = [
-  { key: 'home', re: /^#\/?$/, href: '#/', title: 'Home', icon: 'house', group: 'Workspace', desc: 'Your tasks, reviews and time off in one place' },
-  { key: 'inbox', re: /^#\/inbox$/, href: '#/inbox', title: 'Team inbox', icon: 'inbox', group: 'Workspace', desc: 'Reviews, requests and feedback waiting for you', show: (me) => me.nav.inbox },
-  { key: 'timeoff', re: /^#\/timeoff$/, href: '#/timeoff', title: 'Time off', icon: 'calendar-days', group: 'Workspace', desc: 'Request leave or off-site work and see who is away' },
-  { key: 'request', re: /^#\/request\//, title: 'Request', icon: 'calendar-check', parent: 'inbox', desc: 'Check the dates and balance, then decide' },
-  { key: 'history', re: /^#\/history$/, href: '#/history', title: 'My reviews', icon: 'clipboard-check', group: 'Performance', desc: 'Your reviews across cycles and next year’s plan' },
-  { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', parent: 'history', desc: null },
-  { key: 'active', re: /^#\/active$/, href: '#/active', title: 'Active projects', icon: 'briefcase', group: 'Performance', desc: 'What is running now: dates, client, scope, lead, team and links' },
-  { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Projects', icon: 'folder-kanban', group: 'Performance', desc: 'Engagements, deliverables and who contributed what' },
-  { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', group: 'Performance', desc: 'Examples of AI-assisted work and seat confirmations' },
-  { key: 'messages', re: /^#\/messages(\?.*)?$/, href: '#/messages', title: 'Messages', icon: 'messages-square', group: 'Workspace', desc: 'Private messages with colleagues — one to one or in groups' },
-  { key: 'timesheet', re: /^#\/timesheet(\?.*)?$/, href: '#/timesheet', title: 'Timesheet', icon: 'timer', group: 'Workspace', desc: 'Your monthly hours by project — drafted for you from your assignments and leave' },
-  { key: 'expenses', re: /^#\/expenses(\?.*)?$/, href: '#/expenses', title: 'Expenses', icon: 'receipt', group: 'Workspace', desc: 'Claim expenses with receipts; approvals and payment' },
-  { key: 'letters', re: /^#\/letters$/, href: '#/letters', title: 'Letters & requests', icon: 'mail-check', group: 'Workspace', desc: 'Ask for an experience letter, an internship letter or another HR letter' },
-  { key: 'checklists', re: /^#\/checklists$/, href: '#/checklists', title: 'Checklists', icon: 'list-todo', group: 'Company', desc: 'Quality checklists every deliverable passes before it is submitted' },
-  { key: 'company', re: /^#\/company$/, href: '#/company', title: 'Company profile', icon: 'presentation', group: 'Company', desc: 'The latest company profile, everyone’s CV in GB format, and the brand kit' },
-  { key: 'policies', re: /^#\/policies$/, href: '#/policies', title: 'Policies', icon: 'book-open-check', group: 'Company', desc: 'GB policies, including the AI and Claude usage rules — read and acknowledge' },
-  { key: 'onboarding', re: /^#\/onboarding$/, href: '#/onboarding', title: 'Onboarding', icon: 'user-plus', group: 'Company', desc: 'What a new joiner receives, reads and signs, step by step' },
-  { key: 'office', re: /^#\/office(\?.*)?$/, href: '#/office', title: 'Office expenses', icon: 'building-2', group: 'Company', desc: 'Rent, utilities, kitchen, supplies and fines — kept by the office administrator', show: (me) => me.nav.office },
-  { key: 'documents', re: /^#\/documents$/, href: '#/documents', title: 'Company documents', icon: 'file-check-2', group: 'Company', desc: 'Licences, registrations and other government papers, with expiry reminders', show: (me) => me.nav.office },
-  { key: 'staffing', re: /^#\/staffing$/, href: '#/staffing', title: 'Resource calendar', icon: 'calendar-check', group: 'Business', desc: 'Who is booked and who is free over the next 12 weeks' },
-  { key: 'pipeline', re: /^#\/pipeline$/, href: '#/pipeline', title: 'Pipeline', icon: 'trending-up', group: 'Business', desc: 'Opportunities by stage, value, probability, owner and next step', show: (me) => me.nav.pipeline },
-  { key: 'commercial', re: /^#\/commercial(\?.*)?$/, href: '#/commercial', title: 'Commercial', icon: 'calculator', group: 'Business', desc: 'Project budgets, burn, margin, billing milestones and cash — partners only', show: (me) => me.nav.commercial },
-  { key: 'surveys', re: /^#\/surveys$/, href: '#/surveys', title: 'Surveys', icon: 'heart', group: 'Business', desc: 'Anonymous team pulse and client feedback' },
-  { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', group: 'Workspace', desc: 'Your courses, hours and certificates' },
-  { key: 'offboarding', re: /^#\/offboarding$/, href: '#/offboarding', title: 'Offboarding', icon: 'log-out', group: 'Admin', desc: 'Leaver checklist: handover, equipment, access, settlement', show: (me) => me.nav.offboarding },
-  { key: 'claude', re: /^#\/claude$/, href: '#/claude', title: 'Claude accounts', icon: 'bot', group: 'Company', desc: 'Which Claude seats are active, who uses each and what they are working on' },
-  { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', group: 'Admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
-  { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', group: 'Company', desc: 'Every client and project GB has worked on, who did it, Drive links, proposals and strategy KPIs' },
-  { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', group: 'Workspace', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
-  { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', group: 'Workspace', desc: 'Your employment details, benefits and 2026 work — visible to you, People Ops and partners only' },
-  { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', group: 'Admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
-  { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Completion', icon: 'layout-dashboard', group: 'Admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },
-  { key: 'admin-roster', re: /^#\/admin\/roster$/, href: '#/admin/roster', title: 'Roster', icon: 'users', group: 'Admin', desc: 'People, roles, managers and probation dates', show: (me) => me.nav.admin },
-  { key: 'admin-imports', re: /^#\/admin\/imports$/, href: '#/admin/imports', title: 'Imports', icon: 'cloud-upload', group: 'Admin', desc: 'Bring in PMS forms and LeaveBoard exports safely', show: (me) => me.nav.admin },
-  { key: 'admin-policy', re: /^#\/admin\/policy$/, href: '#/admin/policy', title: 'Policy settings', icon: 'scale', group: 'Admin', desc: 'Leave rules and GB approvals', show: (me) => me.nav.admin },
-  { key: 'admin-reminders', re: /^#\/admin\/reminders$/, href: '#/admin/reminders', title: 'Reminders', icon: 'bell-ring', group: 'Admin', desc: 'Preview, queue and send review reminders', show: (me) => me.nav.admin },
-  { key: 'admin-ai', re: /^#\/admin\/ai$/, href: '#/admin/ai', title: 'AI adoption', icon: 'bot', group: 'Admin', desc: 'Gemini and Claude usage, kept apart from ratings', show: (me) => me.nav.admin },
-  { key: 'admin-audit', re: /^#\/admin\/audit$/, href: '#/admin/audit', title: 'Audit log', icon: 'scroll-text', group: 'Admin', desc: 'Who did what, and when', show: (me) => me.nav.admin },
+  { key: 'home', re: /^#\/?$/, href: '#/', title: 'Home', icon: 'house', area: 'home', desc: null },
+  // ---- My Work
+  { key: 'active', re: /^#\/active$/, href: '#/active', title: 'Projects', icon: 'briefcase', area: 'work', tab: 'Projects', desc: 'The engagements you work on and everything running at GB' },
+  { key: 'project', re: /^#\/project\//, title: 'Project', icon: 'briefcase', area: 'work', tabOf: 'active', desc: null },
+  { key: 'projects', re: /^#\/projects(\?.*)?$/, href: '#/projects', title: 'Deliverables & contributions', icon: 'folder-kanban', area: 'work', tabOf: 'active', desc: 'Deliverables, who contributed what, and the project register' },
+  { key: 'timesheet', re: /^#\/timesheet(\?.*)?$/, href: '#/timesheet', title: 'Timesheet', icon: 'timer', area: 'work', tab: 'Timesheet', desc: 'Your monthly hours by project — drafted for you from your assignments and leave' },
+  { key: 'requests', re: /^#\/requests$/, href: '#/requests', title: 'Requests', icon: 'send', area: 'work', tab: 'Requests', desc: 'Leave, expenses, the gym allowance and HR letters' },
+  { key: 'timeoff', re: /^#\/timeoff$/, href: '#/timeoff', title: 'Time off', icon: 'calendar-days', area: 'work', tabOf: 'requests', desc: 'Request leave or off-site work and see who is away' },
+  { key: 'expenses', re: /^#\/expenses(\?.*)?$/, href: '#/expenses', title: 'Expenses', icon: 'receipt', area: 'work', tabOf: 'requests', desc: 'Claim expenses with receipts; approvals and payment' },
+  { key: 'letters', re: /^#\/letters$/, href: '#/letters', title: 'Letters', icon: 'mail-check', area: 'work', tabOf: 'requests', desc: 'Ask for an experience letter, an internship letter or another HR letter' },
+  { key: 'messages', re: /^#\/messages(\?.*)?$/, href: '#/messages', title: 'Messages', icon: 'messages-square', area: 'work', tab: 'Messages', desc: 'Private messages with colleagues — one to one or in groups' },
+  // ---- My Growth
+  { key: 'history', re: /^#\/history$/, href: '#/history', title: 'My reviews', icon: 'clipboard-check', area: 'growth', tab: 'Reviews & goals', desc: 'Your goals and reviews across cycles, and next year’s plan' },
+  { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', area: 'growth', tabOf: 'history', desc: null },
+  { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', area: 'growth', tab: 'Training', desc: 'Your courses, hours and certificates' },
+  { key: 'profile', re: /^#\/profile$/, href: '#/profile', title: 'My profile', icon: 'id-card', area: 'growth', tab: 'Profile & CV', desc: 'Your employment details, benefits and CV — visible to you, People Ops and partners only' },
+  { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', area: 'growth', tab: 'AI examples', desc: 'Examples of AI-assisted work and seat confirmations' },
+  // ---- Company
+  { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', area: 'company', tab: 'Team', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
+  { key: 'library', re: /^#\/library(\?.*)?$/, href: '#/library', title: 'Library', icon: 'library-big', area: 'company', tab: 'Library', desc: 'Every client and project GB has worked on, Drive links, proposals, toolkit and strategy KPIs' },
+  { key: 'policies', re: /^#\/policies$/, href: '#/policies', title: 'Policies', icon: 'book-open-check', area: 'company', tab: 'Policies', desc: 'GB policies, including the AI and Claude usage rules — read and acknowledge' },
+  { key: 'checklists', re: /^#\/checklists$/, href: '#/checklists', title: 'Checklists', icon: 'list-todo', area: 'company', tab: 'Checklists', desc: 'Quality checklists every deliverable passes before it is submitted' },
+  { key: 'company', re: /^#\/company$/, href: '#/company', title: 'Company profile', icon: 'presentation', area: 'company', tab: 'Profile & brand', desc: 'The latest company profile, everyone’s CV in GB format, and the brand kit' },
+  { key: 'onboarding', re: /^#\/onboarding$/, href: '#/onboarding', title: 'Onboarding', icon: 'user-plus', area: 'company', tab: 'Onboarding', desc: 'What a new joiner receives, reads and signs, step by step' },
+  { key: 'claude', re: /^#\/claude$/, href: '#/claude', title: 'Claude accounts', icon: 'bot', area: 'company', tab: 'Claude accounts', desc: 'Which Claude seats are active, who uses each and what they are working on' },
+  // ---- Manager workspace
+  { key: 'approvals', re: /^#\/(manager|inbox)$/, href: '#/manager', title: 'Approvals', icon: 'inbox', ws: 'manager', desc: 'Everything waiting for your decision, oldest first', show: isMgr },
+  { key: 'request', re: /^#\/request\//, title: 'Request', icon: 'calendar-check', ws: 'manager', parent: 'approvals', desc: 'Check the dates and balance, then decide' },
+  { key: 'team-reviews', re: /^#\/manager\/reviews$/, href: '#/manager/reviews', title: 'Team reviews', icon: 'clipboard-check', ws: 'manager', desc: 'Where each review stands, and calibration', show: isMgr },
+  { key: 'staffing', re: /^#\/staffing(\?.*)?$/, href: '#/staffing', title: 'Resource calendar', icon: 'calendar-check', ws: 'manager', desc: 'Who is on which project, who is away and who has room', show: isMgr },
+  { key: 'pipeline', re: /^#\/pipeline$/, href: '#/pipeline', title: 'Pipeline', icon: 'trending-up', ws: 'manager', desc: 'Opportunities by stage, value, probability, owner and next step', show: (me) => me.nav.pipeline },
+  { key: 'commercial', re: /^#\/commercial(\?.*)?$/, href: '#/commercial', title: 'Commercial', icon: 'calculator', ws: 'manager', desc: 'Project budgets, burn, margin, billing milestones and cash — partners only', show: (me) => me.nav.commercial },
+  { key: 'surveys', re: /^#\/surveys$/, href: '#/surveys', title: 'Surveys', icon: 'heart', ws: (me) => (me.nav.people ? 'manager' : 'mine'), area: 'company', desc: 'Anonymous team pulse and client feedback', show: (me) => me.nav.people },
+  // ---- Admin workspace
+  { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', ws: 'admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
+  { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', ws: 'admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
+  { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Review completion', icon: 'layout-dashboard', ws: 'admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },
+  { key: 'admin-roster', re: /^#\/admin\/roster$/, href: '#/admin/roster', title: 'Roster', icon: 'users', ws: 'admin', desc: 'People, roles, managers and probation dates', show: (me) => me.nav.admin },
+  { key: 'offboarding', re: /^#\/offboarding$/, href: '#/offboarding', title: 'Offboarding', icon: 'log-out', ws: (me) => (me.nav.admin || me.nav.people ? 'admin' : 'mine'), area: 'company', desc: 'Leaver checklist: handover, equipment, access, settlement', show: (me) => me.nav.admin || me.nav.people },
+  { key: 'office', re: /^#\/office(\?.*)?$/, href: '#/office', title: 'Office expenses', icon: 'building-2', ws: 'admin', desc: 'Rent, utilities, kitchen, supplies and fines — kept by the office administrator', show: (me) => me.nav.office },
+  { key: 'documents', re: /^#\/documents$/, href: '#/documents', title: 'Company documents', icon: 'file-check-2', ws: 'admin', desc: 'Licences, registrations and other government papers, with expiry reminders', show: (me) => me.nav.office },
+  { key: 'admin-imports', re: /^#\/admin\/imports$/, href: '#/admin/imports', title: 'Imports', icon: 'cloud-upload', ws: 'admin', desc: 'Bring in PMS forms and LeaveBoard exports safely', show: (me) => me.nav.admin },
+  { key: 'admin-policy', re: /^#\/admin\/policy$/, href: '#/admin/policy', title: 'Policy settings', icon: 'scale', ws: 'admin', desc: 'Leave rules and GB approvals', show: (me) => me.nav.admin },
+  { key: 'admin-reminders', re: /^#\/admin\/reminders$/, href: '#/admin/reminders', title: 'Reminders', icon: 'bell-ring', ws: 'admin', desc: 'Preview, queue and send review reminders', show: (me) => me.nav.admin },
+  { key: 'admin-ai', re: /^#\/admin\/ai$/, href: '#/admin/ai', title: 'AI adoption', icon: 'bot', ws: 'admin', desc: 'Gemini and Claude usage, kept apart from ratings', show: (me) => me.nav.admin },
+  { key: 'admin-audit', re: /^#\/admin\/audit$/, href: '#/admin/audit', title: 'Audit log', icon: 'scroll-text', ws: 'admin', desc: 'Who did what, and when', show: (me) => me.nav.admin },
 ];
-const GROUPS = ['Workspace', 'Performance', 'Business', 'Company', 'Admin'];
 export const pageFor = (hash) => PAGES.find((p) => p.re.test(hash)) || PAGES[0];
-const visible = (me) => PAGES.filter((p) => p.group && (!p.show || p.show(me)));
-/** Apps the person may open, grouped as in the sidebar (used by the Home launcher). */
-export const appsFor = (me) => GROUPS.map((group) => ({ group, items: visible(me).filter((p) => p.group === group) })).filter((g) => g.items.length);
+const wsOf = (p, me) => (typeof p.ws === 'function' ? p.ws(me) : p.ws) || 'mine';
+const allowed = (p, me) => !p.show || p.show(me);
+const WORKSPACES = [
+  { key: 'mine', title: 'My workspace', icon: 'user' },
+  { key: 'manager', title: 'Manager', icon: 'users' },
+  { key: 'admin', title: 'Admin', icon: 'settings' },
+];
 
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 
 export function mountShell({ me, api, onSignOut }) {
   document.body.className = 'ui';
-  document.body.dataset.sidebar = 'light';
+  delete document.body.dataset.sidebar;
   const collapsed = store.get('prism.sidebar') === 'collapsed';
-  const navLinks = new Map();
+  const wsPages = (ws) => PAGES.filter((p) => p.href && wsOf(p, me) === ws && allowed(p, me));
+  const spaces = WORKSPACES.filter((w) => w.key === 'mine' || wsPages(w.key).length);
+  const navLinks = new Map(); // key -> <a>
   const counts = new Map();
+  let currentWs = 'mine';
 
-  const navItem = (p) => {
+  const navItem = (key, title, iconName, href) => {
     const count = h('span', { class: 'nav-count', hidden: true });
-    counts.set(p.key, count);
-    const a = h('a', { class: 'nav-item', href: p.href, title: p.title, onclick: () => shell.classList.remove('nav-open') }, icon(p.icon, { size: 'lg' }), h('span', { class: 'nav-label' }, p.title), count);
-    navLinks.set(p.key, a);
+    counts.set(key, count);
+    const a = h('a', { class: 'nav-item', href, title, onclick: () => shell.classList.remove('nav-open') }, icon(iconName, { size: 'lg' }), h('span', { class: 'nav-label' }, title), count);
+    navLinks.set(key, a);
     return a;
   };
+  const navBox = h('div', { class: 'nav-group' });
+  const switchLinks = new Map();
+  const switcher = spaces.length > 1 ? h('nav', { class: 'ws-switch', 'aria-label': 'Workspace' }, spaces.map((w) => {
+    const first = w.key === 'mine' ? '#/' : wsPages(w.key)[0].href;
+    const c = h('span', { class: 'nav-count', hidden: true }); counts.set(`ws:${w.key}`, c);
+    const a = h('a', { class: 'ws-link', href: first, title: w.title }, icon(w.icon), h('span', { class: 'nav-label' }, w.title), c);
+    switchLinks.set(w.key, a); return a;
+  })) : null;
+  function drawNav(ws) {
+    currentWs = ws; navLinks.clear();
+    const items = ws === 'mine' ? Object.entries(AREAS).map(([k, a]) => navItem(`area:${k}`, a.title, a.icon, a.href)) : wsPages(ws).map((p) => navItem(p.key, p.title, p.icon, p.href));
+    navBox.replaceChildren(...(ws === 'mine' ? [] : [h('div', { class: 'nav-group-label' }, WORKSPACES.find((w) => w.key === ws).title)]), ...items);
+    for (const [k, a] of switchLinks) a.toggleAttribute('aria-current', k === ws);
+    paintCounts();
+  }
   const collapseBtn = h('button', { class: 'nav-item', type: 'button', 'aria-label': 'Collapse sidebar', onclick: () => toggleCollapse() }, icon(collapsed ? 'chevrons-right' : 'chevrons-left', { size: 'lg', flip: true }), h('span', { class: 'nav-label' }, 'Collapse'));
   const sidebar = h('nav', { class: 'sidebar', 'aria-label': 'Main' },
-    h('a', { class: 'sidebar-logo', href: '#/', 'aria-label': 'GB Advisory — home' }, h('img', { class: 'full', src: '/brand/gb-logo.png', alt: 'GB Advisory' }), h('img', { class: 'mark', src: '/brand/gb-mark.png', alt: 'GB Advisory' })),
-    GROUPS.map((g) => { const items = visible(me).filter((p) => p.group === g); return items.length ? h('div', { class: 'nav-group' }, h('div', { class: 'nav-group-label' }, g), items.map(navItem)) : null; }),
-    h('div', { class: 'sidebar-footer' }, collapseBtn));
+    h('a', { class: 'sidebar-logo', href: '#/', 'aria-label': 'GB Advisory — home' }, h('img', { class: 'full', src: '/brand/gb-logo-white.png', alt: 'GB Advisory' }), h('img', { class: 'mark', src: '/brand/gb-mark.png', alt: 'GB Advisory' })),
+    switcher, navBox,
+    h('div', { class: 'sidebar-footer' }, h('a', { class: 'sidebar-me', href: '#/profile', title: 'My profile' }, avatar(me), h('span', { class: 'nav-label' }, h('strong', {}, me.name), me.title ? h('span', {}, me.title) : null)), collapseBtn));
 
-  const crumbs = h('nav', { class: 'breadcrumbs', 'aria-label': 'Breadcrumb' });
-  const bell = button('', { variant: 'ghost', iconName: 'bell', ariaLabel: 'Waiting for you', title: 'Waiting for you', href: '#/inbox' });
   const userMenu = h('div', { class: 'menu', role: 'menu', hidden: true },
     h('div', { class: 'menu-head' }, h('strong', {}, me.name), me.title ? h('span', { class: 'muted' }, me.title) : null),
     h('a', { class: 'menu-item', role: 'menuitem', href: '#/profile' }, icon('id-card'), 'My profile'),
-    h('a', { class: 'menu-item', role: 'menuitem', href: '#/history' }, icon('clipboard-check'), 'My reviews'),
-    h('a', { class: 'menu-item', role: 'menuitem', href: '#/timeoff' }, icon('calendar-days'), 'My time off'),
+    h('a', { class: 'menu-item', role: 'menuitem', href: 'https://meet.google.com/new', target: '_blank', rel: 'noopener' }, icon('video'), 'Start a Google Meet'),
+    h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: () => { toggleMenu(false); openHelp(); } }, icon('circle-help'), 'Help'),
     me.can_view_as ? h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: () => viewAs(me.view_as ? null : 'employee') }, icon(me.view_as ? 'rotate-ccw' : 'eye'), me.view_as ? 'Back to my own access' : 'See the portal as an employee') : null,
     h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: onSignOut }, icon('log-out', { flip: true }), 'Sign out'));
   async function viewAs(mode) { await api('/api/view-as', { method: 'POST', body: { mode } }); location.hash = '#/'; location.reload(); }
@@ -88,12 +127,9 @@ export function mountShell({ me, api, onSignOut }) {
   userMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { toggleMenu(false); avatarBtn.focus(); } });
 
   const topbar = h('header', { class: 'topbar' },
-    button('', { variant: 'ghost', iconName: 'menu', ariaLabel: 'Open menu', onClick: () => shell.classList.add('nav-open') }), crumbs,
-    h('div', { class: 'topbar-actions' },
-      h('button', { class: 'search-trigger', type: 'button', onclick: () => openPalette() }, icon('search'), h('span', { class: 'label' }, 'Search or jump to…'), h('kbd', {}, navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl K')),
-      h('a', { class: 'btn btn-ghost btn-icon', href: 'https://meet.google.com/new', target: '_blank', rel: 'noopener', 'aria-label': 'Start a Google Meet', title: 'Start a Google Meet' }, icon('video')),
-      bell, button('', { variant: 'ghost', iconName: 'circle-help', ariaLabel: 'Help', title: 'Help', onClick: () => openHelp() }),
-      h('div', { class: 'menu-anchor' }, avatarBtn, userMenu)));
+    button('', { variant: 'ghost', iconName: 'menu', ariaLabel: 'Open menu', onClick: () => shell.classList.add('nav-open') }),
+    h('button', { class: 'search-trigger', type: 'button', onclick: () => openPalette() }, icon('search'), h('span', { class: 'label' }, 'Search people, projects, policies and tasks'), h('kbd', {}, navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl K')),
+    h('div', { class: 'topbar-actions' }, h('div', { class: 'menu-anchor' }, avatarBtn, userMenu)));
   topbar.firstChild.classList.add('mobile-only');
 
   const banner = h('div', { id: 'banner', role: 'status', 'aria-live': 'polite' });
@@ -111,51 +147,69 @@ export function mountShell({ me, api, onSignOut }) {
     collapseBtn.setAttribute('aria-label', c ? 'Expand sidebar' : 'Collapse sidebar');
   }
 
-  // ---------------------------------------------------- inbox count / bell --
-  let inboxItems = [];
+  // ------------------------------------------------- counts (team approvals) --
+  let inboxItems = []; let unread = 0;
+  function paintCounts() {
+    const team = inboxItems.filter((i) => i.scope === 'team').length;
+    const set = (k, n) => { const c = counts.get(k); if (c) { c.hidden = !n; c.textContent = String(n); } };
+    set('approvals', team); set('ws:manager', currentWs === 'manager' ? 0 : team); set('area:work', unread);
+  }
   async function refreshInbox() {
     try { inboxItems = (await api('/api/inbox')).items || []; } catch { inboxItems = []; }
-    const n = inboxItems.length; const c = counts.get('inbox');
-    if (c) { c.hidden = !n; c.textContent = String(n); }
-    bell.classList.toggle('icon-dot', n > 0);
-    bell.setAttribute('aria-label', n ? `${n} item${n === 1 ? '' : 's'} waiting for you` : 'Nothing waiting for you');
-    try { const m = (await api('/api/messages/unread')).unread; const mc = counts.get('messages'); if (mc) { mc.hidden = !m; mc.textContent = String(m); } } catch { /* offline */ }
+    try { unread = (await api('/api/messages/unread')).unread || 0; } catch { /* offline */ }
+    paintCounts();
   }
 
   // ------------------------------------------------------- page template --
-  function setPage(hash, titleText) {
+  /** Highlight the page's place in the sidebar; switch sidebar when the workspace changes. */
+  function setPage(hash, titleText, areaOverride) {
     const p = pageFor(hash);
-    for (const [k, a] of navLinks) a.toggleAttribute('aria-current', k === p.key || k === p.parent);
-    navLinks.forEach((a) => { if (a.hasAttribute('aria-current')) a.setAttribute('aria-current', 'page'); });
-    const parent = p.parent ? PAGES.find((x) => x.key === p.parent) : null;
-    const group = (parent || p).group;
-    const trail = [group ? h('span', {}, group) : null, parent ? h('a', { href: parent.href }, parent.title) : null, h('span', { 'aria-current': 'page' }, titleText || p.title)].filter(Boolean);
-    crumbs.replaceChildren(...trail.flatMap((t, i) => (i ? [icon('chevron-right', { flip: true }), t] : [t])));
-    document.title = `${titleText || p.title} · GB Prism`;
+    const ws = areaOverride ? (areaOverride === 'manager' ? 'manager' : 'mine') : wsOf(p, me);
+    const target = spaces.some((s) => s.key === ws) ? ws : 'mine';
+    if (target !== currentWs) drawNav(target);
+    const area = areaOverride && areaOverride !== 'manager' ? areaOverride : p.area;
+    const activeKey = target === 'mine' ? `area:${area || 'home'}` : ({ review: 'team-reviews' }[p.key] || p.parent || p.key);
+    for (const [k, a] of navLinks) { if (k === activeKey) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    document.title = `${titleText || p.title} · GB People`;
     return p;
   }
+  /** Tabs across the top of a My-workspace destination (My Work, My Growth, Company). */
+  function sectionNav(hash, areaOverride) {
+    const p = pageFor(hash);
+    const area = areaOverride && areaOverride !== 'manager' ? areaOverride : wsOf(p, me) === 'mine' ? p.area : null;
+    if (!area || area === 'home') return null;
+    const tabs = PAGES.filter((x) => x.area === area && x.tab && allowed(x, me));
+    const current = p.tabOf || p.key;
+    return h('nav', { class: 'section-nav', 'aria-label': AREAS[area].title },
+      h('span', { class: 'section-eyebrow' }, AREAS[area].title),
+      h('div', { class: 'section-tabs' }, tabs.map((t) => h('a', { class: 'section-tab', href: t.href, 'aria-current': t.key === current ? 'page' : null }, t.tab))));
+  }
 
-  // ------------------------------------------------------- command palette --
+  // ------------------------------------------------------- search (⌘K) --
   let palette = null;
   async function openPalette() {
     if (palette) return;
     let people = [];
-    if (me.nav.admin) { try { people = await api('/api/people'); } catch { /* optional */ } }
+    try { people = await api('/api/people'); } catch { /* optional */ }
+    let projects = [];
+    try { projects = await api('/api/active-projects'); } catch { /* optional */ }
+    const pages = PAGES.filter((p) => p.href && allowed(p, me));
     const entries = [
-      ...visible(me).map((p) => ({ group: 'Go to', label: p.title, sub: p.desc, iconName: p.icon, href: p.href })),
-      ...inboxItems.map((i) => ({ group: 'Waiting for you', label: i.title, sub: i.kind, iconName: 'inbox', href: i.link })),
-      ...people.map((u) => ({ group: 'People', label: u.name, sub: 'Open roster', iconName: 'user', href: '#/admin/roster' })),
+      ...inboxItems.map((i) => ({ group: i.scope === 'team' ? 'Waiting for your decision' : 'Your tasks', label: i.title, sub: i.kind, iconName: 'inbox', href: i.link })),
+      ...pages.map((p) => ({ group: 'Pages', label: p.title, sub: p.desc, iconName: p.icon, href: p.href })),
+      ...projects.map((p) => ({ group: 'Projects', label: p.name, sub: [p.client_name, p.lead_name ? `Lead ${p.lead_name}` : null].filter(Boolean).join(' · '), iconName: 'briefcase', href: `#/project/${p.id}` })),
+      ...people.map((u) => ({ group: 'People', label: u.name, sub: 'Team directory', iconName: 'user', href: '#/team' })),
       { group: 'Actions', label: 'Request time off', iconName: 'plus', href: '#/timeoff' },
+      { group: 'Actions', label: 'Submit an expense', iconName: 'plus', href: '#/expenses' },
       { group: 'Actions', label: 'Sign out', iconName: 'log-out', run: onSignOut },
     ];
-    const inputEl = h('input', { type: 'text', placeholder: 'Search pages, people and tasks…', 'aria-label': 'Search', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', autocomplete: 'off' });
+    const inputEl = h('input', { type: 'text', placeholder: 'Search people, projects, policies and tasks…', 'aria-label': 'Search', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', autocomplete: 'off' });
     const list = h('ul', { class: 'palette-list', id: 'palette-list', role: 'listbox' });
     let active = 0; let shown = [];
     const draw = () => {
       const q = inputEl.value.trim().toLowerCase();
-      // rank: name starts with query > name contains > description/group contains (stable within groups)
       const score = (e) => { const l = e.label.toLowerCase(); return l.startsWith(q) ? 0 : l.includes(q) ? 1 : `${e.sub || ''} ${e.group}`.toLowerCase().includes(q) ? 2 : 9; };
-      shown = !q ? entries.slice(0, 40) : entries.map((e, i) => [score(e), i, e]).filter(([sc]) => sc < 9).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e).slice(0, 40);
+      shown = !q ? entries.filter((e) => e.group !== 'People' && e.group !== 'Projects').slice(0, 40) : entries.map((e, i) => [score(e), i, e]).filter(([sc]) => sc < 9).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e).slice(0, 40);
       active = Math.min(active, Math.max(0, shown.length - 1));
       let g = null; const kids = [];
       shown.forEach((e, i) => {
@@ -177,7 +231,7 @@ export function mountShell({ me, api, onSignOut }) {
       else if (e.key === 'Escape') close();
     });
     const scrimP = h('div', { class: 'overlay', onclick: close });
-    palette = h('div', { class: 'palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command palette' }, h('div', { class: 'palette-input' }, icon('search', { size: 'lg' }), inputEl, h('kbd', { class: 'muted' }, 'Esc')), list);
+    palette = h('div', { class: 'palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Search' }, h('div', { class: 'palette-input' }, icon('search', { size: 'lg' }), inputEl, h('kbd', { class: 'muted' }, 'Esc')), list);
     document.body.append(scrimP, palette);
     draw(); inputEl.focus();
   }
@@ -191,7 +245,8 @@ export function mountShell({ me, api, onSignOut }) {
     const p = pageFor(location.hash || '#/');
     openDrawer({ title: 'Help', iconName: 'circle-help', body: [
       h('p', {}, h('strong', {}, p.title), p.desc ? ` — ${p.desc}.` : ''),
-      h('ul', {}, h('li', {}, 'Press ', h('kbd', {}, '⌘K'), ' or ', h('kbd', {}, 'Ctrl K'), ' to jump to any page or task.'),
+      h('ul', {}, h('li', {}, 'Press ', h('kbd', {}, '⌘K'), ' or ', h('kbd', {}, 'Ctrl K'), ' to find any page, project, person or task.'),
+        h('li', {}, 'Home shows what needs you now; My Work holds projects, timesheet and requests; My Growth holds your reviews, training and CV.'),
         h('li', {}, 'Changes in reviews save automatically; you will see "Saved" next to the status.'),
         h('li', {}, 'Your ratings, comments and leave reasons are only visible to the people involved.')),
       h('p', { class: 'muted' }, 'Something wrong with your plan, a project or a balance? Contact People Ops.'),
@@ -199,7 +254,8 @@ export function mountShell({ me, api, onSignOut }) {
     ] });
   }
 
+  drawNav('mine');
   refreshInbox();
   setInterval(() => { if (!document.hidden) refreshInbox(); }, 60_000);
-  return { main, banner, setPage, refreshInbox };
+  return { main, banner, setPage, sectionNav, refreshInbox };
 }

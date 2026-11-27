@@ -7,7 +7,9 @@ import { homeScreen } from '/screens/home.js';
 import { signInScreen } from '/screens/signin.js';
 import { myProfileScreen, peopleScreen } from '/screens/people.js';
 import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
-import { inboxScreen } from '/screens/inbox.js';
+import { approvalsScreen, teamReviewsScreen } from '/screens/manager.js';
+import { projectScreen } from '/screens/project.js';
+import { requestsScreen } from '/screens/requests.js';
 import { projectsScreen } from '/screens/projects.js';
 import { historyScreen } from '/screens/history.js';
 import { reviewScreen } from '/screens/review.js';
@@ -62,14 +64,15 @@ function errorBox(e) {
 // --------------------------------------------------------------- shell --
 let ME = null;
 const routes = [
-  [/^#\/?$/, home], [/^#\/inbox$/, () => inboxScreen({ api })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
+  [/^#\/?$/, home], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
+  [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],
   [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
   [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
   [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })],
   [/^#\/office(?:\?(.*))?$/, (query) => officeScreen({ api, query })], [/^#\/documents$/, () => documentsScreen({ api })], [/^#\/active$/, () => activeScreen({ api })], [/^#\/claude$/, () => claudeScreen({ api, me: ME })], [/^#\/reports$/, () => reportsScreen({ api })],
-  [/^#\/commercial(?:\?(.*))?$/, (query) => commercialScreen({ api, query })], [/^#\/staffing$/, () => staffingScreen({ api, me: ME })], [/^#\/pipeline$/, () => pipelineScreen({ api, me: ME })],
+  [/^#\/commercial(?:\?(.*))?$/, (query) => commercialScreen({ api, query })], [/^#\/staffing(?:\?(.*))?$/, (query) => staffingScreen({ api, me: ME, query })], [/^#\/pipeline$/, () => pipelineScreen({ api, me: ME })],
   [/^#\/surveys$/, () => surveysScreen({ api })], [/^#\/offboarding$/, () => offboardingScreen({ api, me: ME })], [/^#\/training$/, () => trainingScreen({ api, me: ME })], [/^#\/messages(?:\?(.*))?$/, (query) => messagesScreen({ api, me: ME, query })], [/^#\/people$/, () => peopleScreen({ api })],
 ];
 let SHELL = null;
@@ -102,8 +105,12 @@ async function render() {
     const titleText = h1?.textContent?.trim();
     const header = pageHeader({ iconName: page.icon, title: titleText || page.title, description: page.desc, actions: node.pageActions || [] });
     if (!node.modern) { if (h1) h1.replaceWith(header); else node.prepend?.(header); }
-    if (page.parent && titleText) SHELL.setPage(hash, titleText);
-    if (node.modern) container.replaceChildren(...(node.noHeader ? [banner, node] : [header, banner, node])); else container.replaceChildren(banner, node);
+    // a screen may say where it belongs (e.g. a review is "My Growth" for its subject, "Manager" for the reviewer)
+    if (node.area || ((page.parent || page.tabOf) && titleText)) SHELL.setPage(hash, titleText, node.area);
+    const tabs = SHELL.sectionNav(hash, node.area);
+    const top = [tabs, ...(node.modern && !node.noHeader ? [header] : [])].filter(Boolean);
+    if (node.modern) container.replaceChildren(...top, banner, node); else container.replaceChildren(...top, banner, node);
+    container.classList.toggle('page-home', page.key === 'home');
     main.focus({ preventScroll: true });
     SHELL.refreshInbox();
     return;

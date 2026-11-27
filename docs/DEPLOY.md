@@ -187,3 +187,14 @@ Until opening balances are posted, Time off tells people to keep using LeaveBoar
 2. Google Cloud → APIs & Services → Credentials → the OAuth client → add `https://<new>/auth/google/callback` to Authorized redirect URIs (keep the old one until the switch is done).
 3. On the server, set the new address and keep the old one forwarding:
    `sudo sed -i 's#^BASE_URL=.*#BASE_URL=https://<new>#' /etc/gb-prism/env && (sudo grep -q '^REDIRECT_FROM=' /etc/gb-prism/env || echo 'REDIRECT_FROM=<old>' | sudo tee -a /etc/gb-prism/env)`, then `./deploy/update.sh`.
+
+## Workspace layout (November 2026 redesign)
+
+Nothing to configure: the update changes how the portal is organised, not its data.
+
+- **My workspace** (everyone) has four destinations: **Home**, **My Work** (Projects, Timesheet, Requests, Messages), **My Growth** (Reviews & goals, Training, Profile & CV, AI examples) and **Company** (Team, Library, Policies, Checklists, Profile & brand, Onboarding, Claude accounts).
+- **Home** shows only the person's own tasks: onboarding in their first weeks, their review step when it is due, timesheets, deliverables due, policies, pulses. Approvals of other people's work never appear there.
+- **Manager** (partners, People Ops, line managers, reviewers and project leads) holds **Approvals** (one queue: leave, expenses, timesheets, reviews, project teams, letters, CVs), **Team reviews**, the **Resource calendar** (week view with project blocks, leave and capacity; 12-week view one click away), and Pipeline, Commercial and Surveys where permitted.
+- **Admin** (People Ops; partners see People, Reports and Offboarding; the office administrator sees Office expenses and Company documents) holds the remaining admin pages.
+- Each project has one page, `#/project/<id>`: client, lead, your assignment, next milestone, timeline and deliverables. Deliverables and milestones are shown only to the project's team, its lead, partners and People Ops. Billing milestones and fees stay in Commercial.
+- Old links keep working: `#/inbox` opens Manager → Approvals.

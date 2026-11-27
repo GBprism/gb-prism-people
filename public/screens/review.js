@@ -189,7 +189,7 @@ export async function reviewScreen({ api, id }) {
   const nav = h('nav', { class: 'review-nav', 'aria-label': 'Sections' }, h('ol', {}, sections.map(([key, title]) => h('li', {}, h('a', { href: `#rv-${key}`, onclick: (e) => { e.preventDefault(); document.getElementById(`rv-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, title.replace(/ · \d+%$/, ''))))));
   const content = h('div', { class: 'review-content' }, notices, overview, draftSec, ...itemSecs, projSec, sumSec, scoreSec, devSec, histSec);
   const root = h('div', { class: 'review' }, head, stepper(STEPS.map(([, l]) => ({ label: l })), stepIdx), h('div', { class: 'review-layout' }, nav, content), bar);
-  root.modern = true; root.noHeader = true;
+  root.modern = true; root.noHeader = true; root.area = a.relation === 'self' ? 'growth' : 'manager';
   return root;
 }
 
@@ -312,7 +312,7 @@ function inputScreen({ api, v }) {
         try { await api(`/api/plans/${v.id}/inputs`, { method: 'POST', body: { body: body.value, evidenceUrl: ev.value || null } }); toast('Input sent'); rerender(); } catch (e) { toast(e.message, 'danger'); }
       } }))) }),
     v.myInputs.length ? card({ title: 'Your input so far', iconName: 'history', body: h('div', { class: 'stack' }, v.myInputs.map((i) => h('p', {}, i.body))) }) : null);
-  root.modern = true; root.noHeader = true;
+  root.modern = true; root.noHeader = true; root.area = 'manager';
   return root;
 }
 
@@ -329,6 +329,6 @@ function leadFeedbackScreen({ api, v }) {
         } }))) });
     }),
     v.myFeedback.length ? card({ title: 'Your feedback', iconName: 'history', body: h('div', { class: 'stack' }, v.myFeedback.map((f) => h('p', {}, f.body))) }) : null);
-  root.modern = true; root.noHeader = true;
+  root.modern = true; root.noHeader = true; root.area = 'manager';
   return root;
 }

@@ -43,7 +43,7 @@ test('library: filters, Arabic, proposals outcome, strategy link from the review
   try {
     // any colleague: sees the library, filters it, switches to Arabic, cannot edit
     const emp = await pageAs(SYN.emp);
-    await emp.click('a.nav-item[href="#/library"]'); await emp.waitForSelector('.eng-list');
+    await emp.click('a.nav-item[href="#/team"]'); await emp.click('a.section-tab[href="#/library"]'); await emp.waitForSelector('.eng-list');
     assert.equal(await emp.locator('.eng-item').count(), 2);
     await emp.selectOption('select[aria-label="Country"]', 'Jordan');
     assert.equal(await emp.locator('.eng-item').count(), 1);

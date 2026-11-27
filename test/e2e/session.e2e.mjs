@@ -20,7 +20,7 @@ test('expired session: back to sign-in, not an error', { skip: !chromium && 'pla
     await p.evaluate(async (id) => { await fetch('/api/dev/login', { method: 'POST', headers: { 'X-Requested-With': 'prism' }, body: JSON.stringify({ userId: id }) }); }, SYN.emp);
     await p.reload(); await p.waitForSelector('.sidebar');
     await ctx.clearCookies(); // the session ends
-    await p.click('a.nav-item[href="#/company"]');
+    await p.click('a.nav-item[href="#/team"]');
     await p.waitForSelector('.signin, [class*="signin"], button:has-text("Sign in"), a:has-text("Sign in")', { timeout: 10000 });
     assert.equal(await p.locator('.alert.error').count(), 0);
   } finally { await browser.close(); srv.close(); }

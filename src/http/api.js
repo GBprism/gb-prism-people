@@ -7,6 +7,7 @@ import * as perf from '../domain/performance.js';
 import * as leave from '../domain/leave.js';
 import * as proj from '../domain/projects.js';
 import * as ai from '../domain/ai.js';
+import * as week from '../domain/myweek.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
 import * as lib from '../domain/library.js';
@@ -48,7 +49,7 @@ export function buildApi(db) {
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, google_slides: !!(process.env.GOOGLE_CLIENT_ID && process.env.BASE_URL), can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
       nav: { inbox: true, office: office.canOffice(db, actor), commercial: has(actor, 'partner'),
         pipeline: isOps(actor) || has(actor, 'partner') || !!db.prepare('SELECT 1 FROM proposals WHERE owner_user_id = ?').get(actor.id),
-        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), manager: has(actor, 'partner') || isOps(actor) || reviews > 0 || approvals > 0 || leads > 0, admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // personal settings: email notifications on/off, walkthrough seen
@@ -101,7 +102,9 @@ export function buildApi(db) {
   }
 
   // ---------------------------------------------------------------- inbox --
-  r.get('/api/inbox', ({ actor }) => {
+  // Everything waiting for the person. scope 'mine' = their own task (Home); 'team' = deciding on
+  // someone else's work (Manager → Approvals).
+  const buildInbox = (actor) => {
     const items = [];
     for (const p of db.prepare(`SELECT p.*, u.name emp, c.name cycle, c.manager_due due FROM plans p JOIN users u ON u.id = p.user_id JOIN cycles c ON c.id = p.cycle_id
         WHERE p.tenant_id = ? AND p.reviewer_id = ? AND p.state IN ('draft_plan','manager_review','released','acknowledged')`).all(actor.tenantId, actor.id)) {
@@ -162,14 +165,25 @@ export function buildApi(db) {
     for (const p of srv.openPulsesFor(db, actor)) items.push({ type: 'survey', kind: 'Team pulse', title: `${p.title} — 2 minutes, anonymous`, due: p.closes_on, link: '#/surveys', state: 'Open' });
     for (const o of pipe.overdueSteps(db, actor)) items.push({ type: 'pipeline', kind: 'Pipeline next step', title: `${o.short || o.name_en}: ${o.next_step || o.title_en}`, due: o.next_step_on, link: '#/pipeline', state: 'Overdue' });
     for (const e of clo.missingCloseouts(db, actor)) items.push({ type: 'closeout', kind: 'Close-out', title: `${e.short || e.name_en} — ${e.title_en}: lessons learned and reusable assets`, link: `#/library?closeout=${e.id}`, state: 'To write' });
-    for (const s of db.prepare("SELECT s.id, s.title FROM offboarding_steps s JOIN offboardings o ON o.id = s.offboarding_id WHERE o.status = 'open' AND s.done_at IS NULL AND ((s.owner = 'leaver' AND o.user_id = ?) OR (s.owner = 'manager' AND o.user_id IN (SELECT user_id FROM employments WHERE manager_id = ? AND effective_to IS NULL)))").all(actor.id, actor.id))
-      items.push({ type: 'offboarding', kind: 'Leaving checklist', title: s.title, link: '#/offboarding', state: 'To do' });
+    for (const s of db.prepare("SELECT s.id, s.title, s.owner FROM offboarding_steps s JOIN offboardings o ON o.id = s.offboarding_id WHERE o.status = 'open' AND s.done_at IS NULL AND ((s.owner = 'leaver' AND o.user_id = ?) OR (s.owner = 'manager' AND o.user_id IN (SELECT user_id FROM employments WHERE manager_id = ? AND effective_to IS NULL)))").all(actor.id, actor.id))
+      items.push({ type: 'offboarding', kind: 'Leaving checklist', title: s.title, link: '#/offboarding', state: 'To do', scope: s.owner === 'leaver' ? 'mine' : 'team' });
     const unread = db.prepare('SELECT COUNT(*) n FROM policies p LEFT JOIN policy_acks a ON a.policy_id = p.id AND a.user_id = ? WHERE p.tenant_id = ? AND p.requires_ack = 1 AND (a.acked_at IS NULL OR COALESCE(a.version, \'\') != COALESCE(p.version, \'\'))').get(actor.id, actor.tenantId).n;
     if (unread) items.push({ type: 'policy', kind: 'Policies', title: `${unread} polic${unread === 1 ? 'y' : 'ies'} to read and acknowledge`, link: '#/policies', state: 'To acknowledge' });
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
-    return { items };
+    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist' };
+    return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review' }; });
+  };
+  r.get('/api/inbox', ({ actor, ctx }) => { const scope = q(ctx, 'scope'); const items = buildInbox(actor); return { items: scope ? items.filter((i) => i.scope === scope) : items }; });
+
+  // ------------------------------------------------- my week / project page --
+  r.get('/api/my-week', ({ actor }) => {
+    const plans = db.prepare(`SELECT p.id, p.state, c.name cycle, c.year, c.self_due FROM plans p JOIN cycles c ON c.id = p.cycle_id WHERE p.user_id = ? AND c.status != 'historical' ORDER BY c.year`).all(actor.id);
+    const seats = (() => { try { return ai.mySeatAttributions(db, actor).filter((x) => x.status === 'candidate').length; } catch { return 0; } })();
+    const all = buildInbox(actor);
+    return { ...week.myWeek(db, actor, { personal: all.filter((i) => i.scope === 'mine'), reviewNext: nextAction(actor, plans), seatsToConfirm: seats }), team_waiting: all.filter((i) => i.scope === 'team').length };
   });
+  r.get('/api/projects/:id/overview', ({ actor, params }) => week.projectOverview(db, actor, params.id));
 
   // -------------------------------------------------------- performance --
   r.get('/api/my/plans', ({ actor }) => db.prepare('SELECT p.id, p.state, c.name cycle, c.year, c.status cycle_status FROM plans p JOIN cycles c ON c.id = p.cycle_id WHERE p.user_id = ? ORDER BY c.year DESC').all(actor.id)

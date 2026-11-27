@@ -31,12 +31,13 @@
   --color-accent: var(--gb-cyan);
   --color-focus: var(--gb-navy);
 
-  --color-canvas: #F6F7F9;
+  --color-canvas: #F6F5F1;          /* warm white page */
   --color-surface: #FFFFFF;
-  --color-subtle: #F1F3F6;
-  --color-border: #E3E6EB;
+  --color-subtle: #F0EFEA;
+  --color-subtle-cool: #EEF2F8;     /* calendar rails, quiet panels */
+  --color-border: #E5E3DC;
   --color-border-strong: #CBD1DA;
-  --color-control-border: #858F9E;  /* inputs, checkboxes: 3:1 on white (WCAG 1.4.11) */
+  --color-control-border: #7D8696;  /* inputs, checkboxes: 3:1 on white (WCAG 1.4.11) */
   --color-text: #15181D;
   --color-text-2: #424A57;
   --color-text-3: #5C6470;
@@ -53,21 +54,36 @@
   --color-info:    #004281;  --color-info-bg:    #EBF0F6;  --color-info-border:    #C5D3E6;
   --color-neutral: #424A57;  --color-neutral-bg: #F1F3F6;  --color-neutral-border: #E3E6EB;
 
-  /* sidebar themes (A = midnight, B = white) */
-  --sidebar-bg: var(--gb-midnight);
+  /* sidebar: deep ink with GB blue for the selected destination */
+  --gb-ink: #0E1630;
+  --gb-ink-2: #18223F;
+  --gb-blue-select: #1E5AA0;   /* selected item on ink: white on it 6.9:1 */
+  --sidebar-bg: var(--gb-ink);
   --sidebar-text: var(--color-text-on-dark-2);
   --sidebar-text-active: #FFFFFF;
-  --sidebar-item-hover: var(--gb-midnight-2);
-  --sidebar-item-active: rgba(0, 182, 218, 0.14);
+  --sidebar-item-hover: var(--gb-ink-2);
+  --sidebar-item-active: var(--gb-blue-select);
   --sidebar-indicator: var(--gb-cyan);
-  --sidebar-group-label: #7C88A6;
+  --sidebar-group-label: #8F9AB8;
   --sidebar-border: transparent;
+  --sidebar-switch-bg: var(--gb-ink-2);
+
+  /* calendar and timeline blocks: soft fills that carry meaning (project, leave, conflict) */
+  --block-1-bg: #E3EDFA; --block-1-text: #0B3D78; --block-1-edge: #8FB3E3;
+  --block-2-bg: #DCF2EF; --block-2-text: #0D564F; --block-2-edge: #86CBC2;
+  --block-3-bg: #ECE6FA; --block-3-text: #4B2D8F; --block-3-edge: #B9A6E6;
+  --block-4-bg: #FBEFD9; --block-4-text: #6E4200; --block-4-edge: #E8C27E;
+  --block-5-bg: #FBE4EA; --block-5-text: #8A1D40; --block-5-edge: #E9A5B8;
+  --block-6-bg: #E2F3E6; --block-6-text: #1B6332; --block-6-edge: #97D0A6;
+  --block-leave-bg: #ECEAE4; --block-leave-text: #424A57; --block-leave-edge: #C9C5BA;
+  --block-tentative-edge: #8B93A3;
+  --today-line: var(--gb-blue-select);
 
   /* --- type --------------------------------------------------------------- */
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Poppins', var(--font-sans);
   --font-arabic: 'IBM Plex Sans Arabic', var(--font-sans); /* ready for RTL later */
-  --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 15px; --text-lg: 17px; --text-xl: 20px; --text-2xl: 24px; --text-3xl: 30px;
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 15px; --text-lg: 17px; --text-xl: 20px; --text-2xl: 24px; --text-3xl: 30px; --text-4xl: 36px;
   --leading-tight: 1.25; --leading: 1.5;
   --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600;
 
@@ -75,36 +91,25 @@
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px;
   --page-pad: 24px;
   --card-pad: 20px;
-  --section-gap: 20px;
+  --section-gap: 28px;
   --row-h: 44px; --row-h-compact: 36px;
   --control-h-sm: 32px; --control-h: 36px;
 
   /* --- shape & depth ------------------------------------------------------- */
-  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-pill: 999px;
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 14px; --radius-xl: 20px; --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-raised: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px rgba(16, 24, 40, 0.06);
   --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.08);
   --ring: 0 0 0 3px rgba(0, 66, 129, 0.28);
   --shadow-up: 0 -4px 12px rgba(16, 24, 40, 0.06);
 
   /* --- layout ------------------------------------------------------------- */
-  --sidebar-w: 240px; --sidebar-w-collapsed: 64px; --topbar-h: 56px; --content-max: 1440px;
+  --sidebar-w: 248px; --sidebar-w-collapsed: 68px; --topbar-h: 64px; --content-max: 1440px;
 
   /* --- icons & motion ------------------------------------------------------ */
   --icon-sm: 16px; --icon: 20px; --icon-stroke: 1.75;
   --ease: cubic-bezier(.2, .7, .2, 1); --dur: 140ms;
   --z-sticky: 10; --z-drawer: 40; --z-modal: 50; --z-toast: 60;
-}
-
-/* Sidebar option B: white sidebar with the dark logo */
-[data-sidebar="light"] {
-  --sidebar-bg: #FFFFFF;
-  --sidebar-text: var(--color-text-2);
-  --sidebar-text-active: var(--color-primary);
-  --sidebar-item-hover: var(--color-subtle);
-  --sidebar-item-active: var(--color-primary-tint);
-  --sidebar-indicator: var(--gb-cyan);
-  --sidebar-group-label: var(--color-text-3);
-  --sidebar-border: var(--color-border);
 }
 
 @media (max-width: 640px) { :root { --page-pad: 16px; --card-pad: 16px; } }

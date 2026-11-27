@@ -37,7 +37,7 @@ test('workplace: expense with receipt, timesheet, letter, policy, deliverable ch
   try {
     const emp = await pageAs(SYN.emp);
     // expenses: claim → line with receipt → submit
-    await emp.click('a.nav-item[href="#/expenses"]'); await emp.getByRole('button', { name: 'New claim' }).click();
+    await emp.click('a.nav-item[href="#/active"]'); await emp.click('a.section-tab[href="#/requests"]'); await emp.click('a.request-link[href="#/expenses"]'); await emp.getByRole('button', { name: 'New claim' }).click();
     await emp.fill('#nc-title', 'Client workshop'); await emp.getByRole('button', { name: 'Create claim' }).click();
     await emp.waitForSelector('#ex-date');
     await emp.fill('#ex-date', '2026-03-02'); await emp.selectOption('#ex-cat', 'Taxi/Bus/Tube/Tram'); await emp.fill('#ex-desc', 'Taxi to client');
@@ -48,14 +48,14 @@ test('workplace: expense with receipt, timesheet, letter, policy, deliverable ch
     await emp.waitForSelector('text=Awaiting approval');
     assert.equal(db.prepare("SELECT status FROM expense_claims WHERE title = 'Client workshop'").get().status, 'submitted');
     // timesheet drafts itself; edit a cell; submit
-    await emp.click('a.nav-item[href="#/timesheet"]'); await emp.waitForSelector('.ts-grid');
+    await emp.click('a.section-tab[href="#/timesheet"]'); await emp.waitForSelector('.ts-grid');
     const cell = emp.locator('.ts-cell').first(); await cell.fill('6');
     await emp.waitForSelector('.save-state:text("Saved")');
     await emp.getByRole('button', { name: 'Submit month' }).click(); await emp.waitForSelector('text=Submitted');
     // letter request and policy acknowledgement
-    await emp.click('a.nav-item[href="#/letters"]'); await emp.fill('#lr-why', 'Visa application'); await emp.getByRole('button', { name: 'Send request' }).click();
+    await emp.goto(`${base}#/requests`); await emp.click('a.request-link[href="#/letters"]'); await emp.fill('#lr-why', 'Visa application'); await emp.getByRole('button', { name: 'Send request' }).click();
     await emp.waitForSelector('.eng-item:has-text("Experience letter")');
-    await emp.click('a.nav-item[href="#/policies"]'); await emp.getByRole('button', { name: /I have read this/ }).click(); await emp.waitForSelector('text=Acknowledged');
+    await emp.click('a.nav-item[href="#/team"]'); await emp.click('a.section-tab[href="#/policies"]'); await emp.getByRole('button', { name: /I have read this/ }).click(); await emp.waitForSelector('text=Acknowledged');
     await emp.goto(`${base}#/company`); await emp.waitForSelector('a[href="/api/cv/all"]');
     const cv = await emp.evaluate(async (id) => { const r = await fetch(`/api/cv/${id}`); return [r.status, r.headers.get('content-type')]; }, SYN.emp);
     assert.deepEqual(cv, [200, 'application/vnd.openxmlformats-officedocument.presentationml.presentation']);

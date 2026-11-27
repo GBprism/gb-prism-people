@@ -3,18 +3,13 @@
 import { h, button, icon } from '/ui.js';
 
 const STEPS = [
-  { sel: null, icon: 'party-popper', title: 'Welcome to GB People', text: 'This is where GB Advisory runs day-to-day people work: time off, timesheets, expenses, reviews, projects and company knowledge. This short tour takes a minute.' },
-  { sel: 'a.nav-item[href="#/"]', icon: 'house', title: 'Home', text: 'Your tasks, upcoming time off and shortcuts. Start here every morning.' },
-  { sel: 'a.nav-item[href="#/inbox"]', icon: 'inbox', title: 'Team inbox', text: 'Anything waiting for you — approvals, reviews, requests — appears here. You also get an email when something needs your action.' },
-  { sel: 'a.nav-item[href="#/timeoff"]', icon: 'calendar-days', title: 'Time off', text: 'Request leave or off-site days. If you are on a running project, its manager approves first, then it goes to the final approver.' },
-  { sel: 'a.nav-item[href="#/timesheet"]', icon: 'timer', title: 'Timesheet', text: 'Your month is drafted for you from your projects and leave. Add any active project you worked on, correct the hours and submit at month end.' },
-  { sel: 'a.nav-item[href="#/expenses"]', icon: 'receipt', title: 'Expenses and gym allowance', text: 'Claim expenses with the receipt on every line, and attach your gym registration to receive the gym allowance.' },
-  { sel: 'a.nav-item[href="#/messages"]', icon: 'messages-square', title: 'Messages', text: 'Message a colleague or a project team. Only the people in a conversation can read it.' },
-  { sel: 'a.nav-item[href="#/active"]', icon: 'briefcase', title: 'Active projects', text: 'What is running now, who leads it, who is on the team, and the Drive and chat links.' },
-  { sel: 'a.nav-item[href="#/history"]', icon: 'clipboard-check', title: 'My reviews', text: 'Your goals and performance reviews. Link your objectives to GB’s strategy KPIs from here.' },
-  { sel: 'a.nav-item[href="#/policies"]', icon: 'book-open-check', title: 'Company', text: 'Policies to read and acknowledge, checklists for deliverables, the library of past work, the company profile with your CV, and onboarding.' },
-  { sel: '.avatar-btn', icon: 'user', title: 'Your profile', text: 'Edit your profile and CV here — changes go to People Ops for approval. You can also switch email notifications off.' },
-  { sel: '.search-trigger', icon: 'search', title: 'Find anything', text: 'Press Ctrl K (⌘K on a Mac) to jump to any page. You can restart this tour from the help button (?) at any time.' },
+  { sel: null, icon: 'party-popper', title: 'Welcome to GB People', text: 'This is GB Advisory’s workspace: your projects, time, requests, reviews and company knowledge. This short tour takes a minute.' },
+  { sel: 'a.nav-item[href="#/"]', icon: 'house', title: 'Home', text: 'What needs you now, your week ahead and your projects. Start here every morning.' },
+  { sel: 'a.nav-item[href="#/active"]', icon: 'briefcase', title: 'My Work', text: 'Your engagements and their milestones, your monthly timesheet, requests (leave, expenses, gym allowance, letters) and messages.' },
+  { sel: 'a.nav-item[href="#/history"]', icon: 'trending-up', title: 'My Growth', text: 'Your goals and reviews, training and certificates, your profile and CV, and AI examples.' },
+  { sel: 'a.nav-item[href="#/team"]', icon: 'building-2', title: 'Company', text: 'Who is who, the library of past work and the toolkit, policies to acknowledge, deliverable checklists, the company profile and onboarding.' },
+  { sel: '.ws-switch', icon: 'users', title: 'Your other workspaces', text: 'Approvals, team reviews and the resource calendar are in Manager; People Ops tools are in Admin. Your own tasks stay on Home.' },
+  { sel: '.search-trigger', icon: 'search', title: 'Find anything', text: 'Search people, projects, policies and tasks — or press Ctrl K (⌘K on a Mac). Restart this tour from Help in your account menu.' },
 ];
 
 export function startTour({ api, onDone } = {}) {

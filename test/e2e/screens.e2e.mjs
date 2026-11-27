@@ -42,9 +42,9 @@ test('phase 5 screens: time off, request decision, inbox, projects, my reviews',
 
     const approver = db.prepare('SELECT approver_id FROM leave_requests WHERE id = ?').get(req.id).approver_id;
     const mgr = await pageAs(approver);
-    await mgr.goto(`${base}#/inbox`); await mgr.waitForSelector('.task-list');
-    assert.match(await mgr.textContent('.task-list'), /Time-off request/);
-    await mgr.click('.task-list a[href^="#/request/"]'); await mgr.waitForSelector('.request-head');
+    await mgr.goto(`${base}#/manager`); await mgr.waitForSelector('.approvals');
+    assert.match(await mgr.textContent('.approvals'), /Time-off request/);
+    await mgr.click('.approvals a[href^="#/request/"]'); await mgr.waitForSelector('.request-head');
     await mgr.click('button:has-text("Decline")'); // a note is required to decline
     assert.equal(db.prepare('SELECT state FROM leave_requests WHERE id = ?').get(req.id).state, 'submitted');
     await mgr.click('button:has-text("Approve")'); await mgr.waitForFunction(() => location.hash === '#/inbox');
