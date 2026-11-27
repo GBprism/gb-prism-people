@@ -72,12 +72,56 @@ test('workspace flows: new joiner, consultant, project lead', { skip: !chromium 
     assert.match(await lead.textContent('.focus-title'), /self-assessment/);
     assert.equal(await lead.locator('.home-attn :text("Confirm team")').count(), 0, 'team approvals stay out of personal Home');
     await lead.locator('.focus-actions a').click(); await lead.waitForFunction(() => location.hash.startsWith('#/review/'));
-    await lead.waitForSelector('.nav-item[aria-current="page"]');
-    assert.equal(await lead.$eval('.nav-item[aria-current="page"] .nav-label', (e) => e.textContent), 'My Growth');
+    await lead.waitForFunction(() => document.querySelector('.nav-item[aria-current="page"] .nav-label')?.textContent === 'My Growth');
     await lead.click('a.ws-link[title="Manager"]'); await lead.waitForSelector('.approvals');
     assert.match(await lead.textContent('.approvals'), /Confirm team/);
     await lead.click('a.nav-item[href="#/staffing"]'); await lead.waitForSelector('.wk-grid');
     assert.match(await lead.textContent('.wk-grid'), /Project Alpha/);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); srv.close(); }
+});
+
+test('employee edits their projects and sends for approval; lead approves; drafts submit from the expense list; photos are black and white', { skip: !chromium && 'playwright not installed' }, async () => {
+  const { db } = fresh();
+  db.prepare("INSERT INTO projects (id, tenant_id, name, kind, status, register_status, lead_user_id) VALUES ('prj_gamma', ?, 'Project Gamma — BPM', 'engagement', 'active', 'approved', ?)").run(SYN.tenant, SYN.lead);
+  const srv = createServer(db, { devLogin: true });
+  await new Promise((r) => srv.listen(0, r));
+  const base = `http://127.0.0.1:${srv.address().port}/`;
+  const browser = await chromium.launch();
+  const errors = [];
+  const pageAs = async (userId) => {
+    const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    p.on('pageerror', (e) => errors.push(e.message));
+    p.on('console', (m) => { if (m.type() === 'error' && !/40[13]/.test(m.text())) errors.push(m.text()); });
+    await p.goto(base);
+    await p.evaluate(async (id) => { await fetch('/api/dev/login', { method: 'POST', headers: { 'X-Requested-With': 'prism' }, body: JSON.stringify({ userId: id }) }); }, userId);
+    await p.reload(); await p.waitForSelector('.home-hero');
+    return p;
+  };
+  try {
+    const emp = await pageAs(SYN.emp);
+    await emp.click('a.nav-item[href="#/active"]'); await emp.getByRole('button', { name: 'Update my projects' }).click();
+    await emp.selectOption('select[aria-label="Project"]', 'prj_gamma'); await emp.fill('input[aria-label="Your role"]', 'analyst');
+    await emp.getByRole('button', { name: 'Send for approval' }).click(); await emp.waitForSelector('text=Waiting for approval');
+    assert.match(await emp.textContent('.req-pending'), /Join Project Gamma — BPM as analyst/);
+
+    const lead = await pageAs(SYN.lead);
+    await lead.click('a.ws-link[title="Manager"]'); await lead.waitForSelector('.approvals');
+    assert.match(await lead.textContent('.approvals'), /Eli Employee — Join Project Gamma/);
+    await lead.locator('.approval', { hasText: 'Project Gamma' }).getByRole('button', { name: 'Approve' }).click();
+    await lead.waitForSelector('text=Approved — their projects are updated');
+    assert.ok(db.prepare("SELECT 1 FROM project_assignments WHERE project_id = 'prj_gamma' AND user_id = ? AND status = 'confirmed'").get(SYN.emp));
+
+    // expense draft: Edit and Submit right from the list
+    await emp.goto(`${base}#/expenses`); await emp.getByRole('button', { name: 'New claim' }).click();
+    await emp.fill('#nc-title', 'Taxi to client'); await emp.getByRole('button', { name: 'Create claim' }).click(); await emp.waitForSelector('#ex-date');
+    await emp.keyboard.press('Escape'); await emp.goto(`${base}#/requests`); await emp.goto(`${base}#/expenses`);
+    await emp.waitForSelector('text=Add an expense to submit');
+    assert.ok(await emp.getByRole('button', { name: 'Edit' }).count());
+
+    // people photos render in black and white
+    const filter = await emp.evaluate(() => { const i = document.createElement('img'); i.className = 'avatar-img'; document.body.append(i); const f = getComputedStyle(i).filter; i.remove(); return f; });
+    assert.equal(filter, 'grayscale(1)');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); srv.close(); }
 });

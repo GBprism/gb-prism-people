@@ -8,6 +8,7 @@ import * as leave from '../domain/leave.js';
 import * as proj from '../domain/projects.js';
 import * as ai from '../domain/ai.js';
 import * as week from '../domain/myweek.js';
+import * as pchg from '../domain/projectchanges.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
 import * as lib from '../domain/library.js';
@@ -171,6 +172,7 @@ export function buildApi(db) {
     if (unread) items.push({ type: 'policy', kind: 'Policies', title: `${unread} polic${unread === 1 ? 'y' : 'ies'} to read and acknowledge`, link: '#/policies', state: 'To acknowledge' });
     for (const c of db.prepare("SELECT c.*, u.name FROM clarifications c JOIN users u ON u.id = c.raised_by WHERE c.route_to = ? AND c.status = 'open'").all(actor.id))
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
+    for (const r of pchg.pendingFor(db, actor)) items.push({ type: 'project_change', id: r.id, kind: 'Project change', title: `${r.person} — ${r.summary}`, note: r.note, link: '#/manager', state: 'Waiting for you' });
     const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist' };
     return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review' }; });
   };
@@ -183,6 +185,10 @@ export function buildApi(db) {
     const all = buildInbox(actor);
     return { ...week.myWeek(db, actor, { personal: all.filter((i) => i.scope === 'mine'), reviewNext: nextAction(actor, plans), seatsToConfirm: seats }), team_waiting: all.filter((i) => i.scope === 'team').length };
   });
+  r.get('/api/my-projects', ({ actor }) => pchg.myProjectsEditor(db, actor));
+  r.post('/api/my-projects/requests', ({ actor, body }) => pchg.requestChanges(db, actor, body || {}));
+  r.post('/api/my-projects/requests/:id/withdraw', ({ actor, params }) => pchg.withdrawChange(db, actor, params.id));
+  r.post('/api/project-changes/:id/decide', ({ actor, params, body }) => pchg.decideChange(db, actor, params.id, body || {}));
   r.get('/api/projects/:id/overview', ({ actor, params }) => week.projectOverview(db, actor, params.id));
 
   // -------------------------------------------------------- performance --

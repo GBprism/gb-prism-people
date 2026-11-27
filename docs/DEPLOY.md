@@ -198,3 +198,17 @@ Nothing to configure: the update changes how the portal is organised, not its da
 - **Admin** (People Ops; partners see People, Reports and Offboarding; the office administrator sees Office expenses and Company documents) holds the remaining admin pages.
 - Each project has one page, `#/project/<id>`: client, lead, your assignment, next milestone, timeline and deliverables. Deliverables and milestones are shown only to the project's team, its lead, partners and People Ops. Billing milestones and fees stay in Commercial.
 - Old links keep working: `#/inbox` opens Manager → Approvals.
+
+## Active projects list, project changes by employees, black-and-white photos
+
+**What is running now.** GB's own list of running projects and who is on each is kept privately in `active-projects.json` (private bundle). It is authoritative: listed projects become active with exactly the listed people; every other running project is marked completed and its open assignments end the day before. Project leads are kept. Library engagements still marked running but not on the list are reported, not changed. Always dry-run first:
+
+```bash
+cd /opt/gb-prism && sudo -u gbprism node --no-warnings scripts/set-active-projects.js --db /var/lib/gb-prism/prism-people.db --file config/private/real/active-projects.json --by layan@gb-advisory.com
+```
+
+Read the report, then run the same command with `--apply` at the end.
+
+**Employees keep it current.** My Work → Projects → **Update my projects**: join a running project (with their role), mark one they have left (last day), or correct their role. Each change goes to the project lead — or to partners and People Ops when there is no lead or the lead is asking — in Manager → Approvals, with an email. Declines need a reason, which the employee sees.
+
+**Photos** are shown in black and white everywhere in the portal, and the stored photos (used on CV slides) are black and white from the private bundle.

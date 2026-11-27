@@ -67,7 +67,7 @@ const routes = [
   [/^#\/?$/, home], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
   [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],
-  [/^#\/profile$/, () => myProfileScreen({ api })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
+  [/^#\/profile(?:\?(.*))?$/, (query) => myProfileScreen({ api, query })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
   [/^#\/letters$/, () => lettersScreen({ api })], [/^#\/company$/, () => companyScreen({ api, me: ME })], [/^#\/policies$/, () => policiesScreen({ api, me: ME })],
   [/^#\/onboarding$/, () => onboardingScreen({ api })], [/^#\/checklists$/, () => checklistsScreen({ api })],
