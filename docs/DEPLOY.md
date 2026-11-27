@@ -225,3 +225,78 @@ Nothing to configure: migration 022 runs on start. Each engagement under My Work
 - **Discussion.** The project's discussion is the same conversation as in Messages. It has replies in threads, @mentions (only of people on the engagement), #card links, *Create task from message* (the task links back to the message) and *Pin as a decision* (lead, partners, People Ops).
 - **Alerts.** Emails go out for an assignment, a review request, changes requested, a review passed, @mentions, and due tomorrow / overdue (once each). Routine moves and ordinary discussion send nothing; one action never emails the same person twice. Home shows your due tasks, the reviews asked of you and unread mentions, each linking to the exact card or thread.
 - **Access.** Boards, cards, comments, threads, search results, alerts and deep links are limited to the project's lead and current team, partners and People Ops. Anyone else gets "not found". Drive links open with the file's own Google sharing.
+
+## Employee records (admin only)
+
+Admin → **Employee records** is GB's HR master file. It holds:
+- **Job:** code, names and titles in English and Arabic, grade, department and division, dates, manager (from the org chart), employment type and contract end.
+- **Pay:** basic salary, mobile and transportation allowances; gross is calculated.
+- **Personal and identity:** birth date, gender, nationality, religion, marital status, national number, social security number and passport number.
+- **Education, contacts and bank:** education, address and contacts, emergency contact, bank name and IBAN.
+
+Only people with the **admin** role can open it — not partners, People Ops or managers. Everything except the employee code is **encrypted** on the server (AES-256-GCM). Every view, change and export is written to the audit log; the log records which fields changed, never the values.
+
+**One-time setup (required before first use).** Create the encryption key on the server:
+
+```bash
+echo "HR_DATA_KEY=$(openssl rand -base64 32)" | sudo tee -a /etc/gb-prism/env > /dev/null && sudo systemctl restart gb-prism
+```
+
+Then **keep a copy of the key somewhere safe outside the server** (for example a password manager only partners can open):
+
+```bash
+sudo grep HR_DATA_KEY /etc/gb-prism/env
+```
+
+Without the key, the records — including those in backups — cannot be read. Never change it once records exist.
+
+**Use.**
+1. **Create records from GB People.** This fills codes (GB-001… by joining date), names, titles in English and Arabic, departments, joining and probation dates, birth dates, education, certificates and a proposed grade.
+2. Add pay and confirm the grade.
+3. **Ask employees for their details.** Each person gets an email and a Home task, and fills only their personal fields under My Growth → Employee record. They never see pay or grade.
+4. Check what each person sent, tick what to apply, or return it with a note.
+5. **Download Excel** exports the full file.
+
+**Proposed grade** (A, B, C within each title): A in the first two years at GB, B from two years, C from four. Partners and directors have no grade. It is a starting point only: confirm or change it for each person.
+
+## Performance management (2027 onward), promotions, compensation, 2025 history
+
+**What changes for 2026.** The 2026 year-end review runs to completion on the current form, because that is what was communicated. One new rule applies now: a result can be released only after **every founder (Layan and Ghaith) confirms the exact final ratings**. Any calibration change afterwards needs confirming again. Employees see ratings and scores only after release. 2025 and 2026 results keep their original scale.
+
+**The process from 2027.**
+
+| Step | Who | Screen |
+|---|---|---|
+| Founders approve the policy (each of them) | Layan, Ghaith | Admin → Performance setup |
+| Start the cycle; everyone except the founders takes part with their line manager as review manager | founder or admin | Admin → Performance setup |
+| Up to three priorities (delivery, growth, firm contribution); the manager agrees them; later changes need approval | employee, manager | My Growth → My performance |
+| Assignment kickoff (owns / what good looks like / dependencies); deadline clashes flagged | employee or manager | review page |
+| Project snapshots: automatic at a milestone, roll-off and closure, and quarterly on long engagements, due in 5 working days; duplicates suppressed; shared when submitted; the employee can add context or ask for a correction | project lead (observer) | Manager → Team performance |
+| Coaching in March, June (career) and September — no rating | manager | review page |
+| Reflection: up to 3 accomplishments with evidence, 1 growth area, next responsibility | employee | My performance |
+| Ratings 1–5 per dimension with evidence and rationale; N/A only with founder approval; insufficient evidence is recorded, never scored | manager | review page |
+| Calibration side by side; changes need a rationale; score computed on the server | founders | Admin → Calibration |
+| **Both founders confirm**, then one releases privately; the email has no scores | founders | review page |
+| Acknowledge receipt or ask for a correction; amendments are audited and go back to both founders | employee, founders | — |
+| Promotion cases: eligibility gates, readiness, the founders' approval of role, scope and date; overrides recorded; the roster is never changed automatically | manager, founders | Manager → Promotions |
+| Compensation: founders and named compensation administrators only (the admin role alone is refused); encrypted; never triggers payroll or emails | founders | Admin → Compensation |
+
+**2025 history import.** This is for the admin with compensation access: Ghaith or Layan names the person under Compensation → admins. Go to Admin → PMS history import:
+1. Upload `2025_PMS_Outcome_Confidential.csv`, check the dry run (who matched, what needs mapping, flagged differences), then **Import**.
+2. Optionally upload the Salaries tab workbook and `Bonuses.xlsx`. They are kept as separate worksheet proposals and compared with what was communicated.
+
+Rules:
+- People are matched by exact work email (CSV) or exact full name (worksheets).
+- Anyone else, including people who have left, is skipped unless mapped by hand.
+- Age is never read.
+- Re-uploading the same file, or the same email message, does nothing.
+- Nothing changes current profiles.
+
+**Decisions the founders need to make before launch:**
+1. Approve the four dimensions and weights (35/30/20/15), the 1–5 scale and the bands (4.50 Exceptional, 3.75 Exceeds, 3.00 Meets, 2.00 Partially, below 2.00 Below).
+2. Promotion gates: score at least 4.00, no dimension below 3, six months of next-level responsibility. **Set the minimum time in grade** (left empty until decided).
+3. Bonus guidance in months of salary (used only to flag proposals) and salary bands (not configured).
+4. Whether employees see their approved compensation in GB People.
+5. Who, besides the founders, may open compensation.
+
+**Deployment order:** merge the employee-records PR (#21) first, then this one. Then on the server: `cd ~/gb-prism-people && bash deploy/update.sh` and `sudo systemctl restart gb-prism`. Migration 024 runs on start. `HR_DATA_KEY` must already be set (see Employee records): compensation uses the same encryption.

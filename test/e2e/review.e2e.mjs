@@ -63,6 +63,10 @@ test('review page: autosave, modals instead of prompts, every stage, phone width
     // partner releases
     const partner = await pageAs(SYN.partner);
     await partner.goto(`${base}#/review/${PLAN}`); await partner.waitForSelector('.review-bar');
+    // the founders confirm first (one founder in the synthetic data); only then can the result be released
+    assert.equal(await partner.locator('.review-bar button:has-text("Release result")').count(), 0);
+    await partner.click('.review-bar button:has-text("Confirm final result")'); await partner.click('.modal button:has-text("Confirm")');
+    await partner.waitForSelector('.review-bar button:has-text("Release result")');
     await partner.click('.review-bar button:has-text("Release result")'); await partner.click('.modal button:has-text("Release")');
     await partner.waitForFunction(() => document.querySelector('.review-head .badge')?.textContent.includes('Result released'));
 

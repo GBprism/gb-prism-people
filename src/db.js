@@ -559,6 +559,76 @@ export const MIGRATIONS = [
    CREATE INDEX mentions_user ON mentions(user_id, seen_at);
    CREATE INDEX deliverables_owner ON deliverables(owner_id);
    CREATE INDEX messages_parent ON messages(parent_id);`,
+
+  // ---- 023 employee records (admin only). Everything but the code is encrypted at rest (HR_DATA_KEY). ----
+  `CREATE TABLE hr_records (
+     user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL, employee_code TEXT NOT NULL,
+     data_enc TEXT NOT NULL, updated_by TEXT, updated_at TEXT NOT NULL, UNIQUE(tenant_id, employee_code));
+   CREATE TABLE hr_record_requests (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id),
+     status TEXT NOT NULL CHECK (status IN ('requested','submitted','applied','returned','cancelled')),
+     requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, submitted_enc TEXT, submitted_at TEXT,
+     decided_by TEXT, decided_at TEXT, note TEXT);
+   CREATE INDEX hr_requests_user ON hr_record_requests(user_id, status);`,
+
+  // ---- 024 performance cycle (2027 onward), promotion cases, restricted compensation, historical outcomes ----
+  `CREATE TABLE perf_policies (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft','approved','retired')),
+     policy_json TEXT NOT NULL, created_by TEXT, created_at TEXT NOT NULL, UNIQUE(tenant_id, version));
+   CREATE TABLE perf_policy_approvals (policy_id TEXT NOT NULL REFERENCES perf_policies(id), founder_id TEXT NOT NULL, approved_at TEXT NOT NULL, PRIMARY KEY (policy_id, founder_id));
+   CREATE TABLE perf_cycles (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, year INTEGER NOT NULL, name TEXT NOT NULL, policy_id TEXT NOT NULL REFERENCES perf_policies(id),
+     policy_frozen_json TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('setup','goals','in_year','annual','closed')),
+     dates_json TEXT NOT NULL DEFAULT '{}', created_by TEXT, created_at TEXT NOT NULL, UNIQUE(tenant_id, year));
+   CREATE TABLE perf_reviews (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, cycle_id TEXT NOT NULL REFERENCES perf_cycles(id), user_id TEXT NOT NULL REFERENCES users(id),
+     manager_id TEXT REFERENCES users(id), level TEXT, track TEXT, role_history_json TEXT NOT NULL DEFAULT '[]',
+     state TEXT NOT NULL CHECK (state IN ('goals','in_year','reflection','manager','calibration','approval','released','acknowledged','correction','closed')),
+     goals_agreed_at TEXT, goals_agreed_by TEXT, reflection_json TEXT, reflection_at TEXT, manager_submitted_at TEXT, calibrated_at TEXT,
+     outcome TEXT CHECK (outcome IN ('scored','insufficient')), insufficient_reason TEXT, score_points INTEGER, band TEXT, applied_weights_json TEXT,
+     version INTEGER NOT NULL DEFAULT 1, released_at TEXT, released_by TEXT, released_json TEXT, ack_at TEXT, ack_kind TEXT, ack_note TEXT, closed_at TEXT,
+     leadership_note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(cycle_id, user_id));
+   CREATE TABLE perf_goals (
+     id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES perf_reviews(id), kind TEXT NOT NULL CHECK (kind IN ('delivery','growth','contribution')),
+     text TEXT NOT NULL, measure TEXT, status TEXT NOT NULL DEFAULT 'active', updated_by TEXT, updated_at TEXT NOT NULL, UNIQUE(review_id, kind));
+   CREATE TABLE perf_goal_changes (id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, before_text TEXT, after_text TEXT, reason TEXT, requested_by TEXT, approved_by TEXT, status TEXT NOT NULL, at TEXT NOT NULL);
+   CREATE TABLE perf_kickoffs (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), assignment_id TEXT, project_id TEXT, internal_title TEXT,
+     role TEXT, owns TEXT, good_looks_like TEXT, dependencies TEXT, start_date TEXT, end_date TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE perf_snapshots (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), project_id TEXT, kickoff_id TEXT, observer_id TEXT NOT NULL REFERENCES users(id),
+     trigger TEXT NOT NULL CHECK (trigger IN ('milestone','rolloff','closure','quarterly','manual')), trigger_ref TEXT, triggered_on TEXT NOT NULL, due_on TEXT NOT NULL,
+     status TEXT NOT NULL CHECK (status IN ('requested','draft','submitted','cancelled')), owned TEXT, example TEXT, impact TEXT, development TEXT,
+     rating TEXT CHECK (rating IN ('below','in_line','above','insufficient')), employee_context TEXT, correction_requested_at TEXT, submitted_at TEXT, created_by TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE perf_coaching (
+     id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES perf_reviews(id), month INTEGER NOT NULL, career INTEGER NOT NULL DEFAULT 0, held_on TEXT NOT NULL,
+     strength TEXT, improvement TEXT, next_assignment TEXT, owner_id TEXT, due_on TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(review_id, month));
+   CREATE TABLE perf_ratings (
+     review_id TEXT NOT NULL REFERENCES perf_reviews(id), dimension TEXT NOT NULL, proposed_score INTEGER, final_score INTEGER, evidence TEXT, rationale TEXT,
+     insufficient INTEGER NOT NULL DEFAULT 0, na_requested INTEGER NOT NULL DEFAULT 0, na_reason TEXT, na_approved_by TEXT, growth_action TEXT, updated_by TEXT, updated_at TEXT NOT NULL,
+     PRIMARY KEY (review_id, dimension));
+   CREATE TABLE perf_rating_changes (id TEXT PRIMARY KEY, review_id TEXT NOT NULL, dimension TEXT NOT NULL, stage TEXT NOT NULL, from_score INTEGER, to_score INTEGER, rationale TEXT NOT NULL, by_id TEXT NOT NULL, at TEXT NOT NULL);
+   CREATE TABLE perf_approvals (review_id TEXT NOT NULL REFERENCES perf_reviews(id), founder_id TEXT NOT NULL, version INTEGER NOT NULL, approved_at TEXT NOT NULL, PRIMARY KEY (review_id, founder_id));
+   CREATE TABLE perf_amendments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL, reason TEXT NOT NULL, before_json TEXT, after_json TEXT, by_id TEXT NOT NULL, at TEXT NOT NULL);
+   CREATE TABLE promotion_cases (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT, outcome_kind TEXT NOT NULL CHECK (outcome_kind IN ('title','grade','probation')),
+     target_title TEXT, target_track TEXT, responsibilities TEXT, evidence_links TEXT, scope_from TEXT, scope_to TEXT, observations TEXT, economic TEXT,
+     pay_within_band INTEGER, pay_exception TEXT, months_in_grade INTEGER, opportunity_assignment TEXT, sponsor_id TEXT, review_on TEXT,
+     readiness TEXT NOT NULL DEFAULT 'pending' CHECK (readiness IN ('pending','ready','development','deferred','approved')), readiness_rationale TEXT,
+     override_json TEXT, approved_by TEXT, approved_at TEXT, approved_title TEXT, approved_scope TEXT, effective_on TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+   CREATE TABLE comp_records (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT REFERENCES users(id), year INTEGER NOT NULL,
+     source TEXT NOT NULL CHECK (source IN ('email','worksheet','proposal')), source_ref TEXT NOT NULL,
+     status TEXT NOT NULL CHECK (status IN ('historical','draft','approved','released')), data_enc TEXT NOT NULL,
+     approved_by TEXT, approved_at TEXT, released_at TEXT, acknowledged_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+     UNIQUE(tenant_id, year, source, source_ref));
+   CREATE TABLE perf_import_batches (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, filename TEXT, sha TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('previewed','applied','discarded')),
+     preview_enc TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, applied_at TEXT, UNIQUE(tenant_id, kind, sha));
+   CREATE INDEX perf_snapshots_observer ON perf_snapshots(observer_id, status);
+   CREATE INDEX perf_snapshots_user ON perf_snapshots(user_id, project_id);
+   CREATE INDEX comp_records_user ON comp_records(user_id, year);
+   CREATE TABLE plan_founder_confirmations (plan_id TEXT NOT NULL REFERENCES plans(id), founder_id TEXT NOT NULL, fingerprint TEXT NOT NULL, confirmed_at TEXT NOT NULL, PRIMARY KEY (plan_id, founder_id));`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

@@ -10,7 +10,7 @@ import { h, icon, avatar, button, openDrawer } from '/ui.js';
 export const AREAS = {
   home: { title: 'Home', icon: 'house', href: '#/' },
   work: { title: 'My Work', icon: 'briefcase', href: '#/active' },
-  growth: { title: 'My Growth', icon: 'trending-up', href: '#/history' },
+  growth: { title: 'My Growth', icon: 'trending-up', href: '#/performance' },
   company: { title: 'Company', icon: 'building-2', href: '#/team' },
 };
 const isMgr = (me) => !!me.nav.manager;
@@ -30,10 +30,13 @@ export const PAGES = [
   { key: 'letters', re: /^#\/letters$/, href: '#/letters', title: 'Letters', icon: 'mail-check', area: 'work', tabOf: 'requests', desc: 'Ask for an experience letter, an internship letter or another HR letter' },
   { key: 'messages', re: /^#\/messages(\?.*)?$/, href: '#/messages', title: 'Messages', icon: 'messages-square', area: 'work', tab: 'Messages', desc: 'Private messages with colleagues — one to one or in groups' },
   // ---- My Growth
-  { key: 'history', re: /^#\/history$/, href: '#/history', title: 'My reviews', icon: 'clipboard-check', area: 'growth', tab: 'Reviews & goals', desc: 'Your goals and reviews across cycles, and next year’s plan' },
+  { key: 'performance', re: /^#\/performance$/, href: '#/performance', title: 'My performance', icon: 'trending-up', area: 'growth', tab: 'My performance', desc: 'Your priorities, assignment evidence, feedback, coaching and released results' },
+  { key: 'perf-review', re: /^#\/performance\/review\//, title: 'Performance review', icon: 'clipboard-list', area: 'growth', tabOf: 'performance', desc: null },
+  { key: 'history', re: /^#\/history$/, href: '#/history', title: 'Earlier reviews', icon: 'clipboard-check', area: 'growth', tab: 'Earlier reviews', desc: 'Your goals and reviews across cycles, and next year’s plan' },
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', area: 'growth', tabOf: 'history', desc: null },
   { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', area: 'growth', tab: 'Training', desc: 'Your courses, hours and certificates' },
   { key: 'profile', re: /^#\/profile(\?.*)?$/, href: '#/profile', title: 'My profile', icon: 'id-card', area: 'growth', tab: 'Profile & CV', desc: 'Your employment details, benefits and CV — visible to you, People Ops and partners only' },
+  { key: 'my-record', re: /^#\/my-record$/, href: '#/my-record', title: 'My employee record', icon: 'lock', area: 'growth', tab: 'Employee record', desc: 'Your personal, ID, education, contact and bank details — seen only by the GB admin' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', area: 'growth', tab: 'AI examples', desc: 'Examples of AI-assisted work and seat confirmations' },
   // ---- Company
   { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', area: 'company', tab: 'Team', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
@@ -47,11 +50,18 @@ export const PAGES = [
   { key: 'approvals', re: /^#\/(manager|inbox)$/, href: '#/manager', title: 'Approvals', icon: 'inbox', ws: 'manager', desc: 'Everything waiting for your decision, oldest first', show: isMgr },
   { key: 'request', re: /^#\/request\//, title: 'Request', icon: 'calendar-check', ws: 'manager', parent: 'approvals', desc: 'Check the dates and balance, then decide' },
   { key: 'team-reviews', re: /^#\/manager\/reviews$/, href: '#/manager/reviews', title: 'Team reviews', icon: 'clipboard-check', ws: 'manager', desc: 'Where each review stands, and calibration', show: isMgr },
+  { key: 'team-performance', re: /^#\/manager\/performance(\?.*)?$/, href: '#/manager/performance', title: 'Team performance', icon: 'trending-up', ws: 'manager', desc: 'Feedback to write, coaching, annual reviews and evidence coverage for your people', show: isMgr },
+  { key: 'promotions', re: /^#\/admin\/promotions$/, href: '#/admin/promotions', title: 'Promotions', icon: 'award', ws: 'manager', desc: 'Promotion cases: eligibility, readiness and the founders’ decision', show: (me) => me.nav.founder || me.nav.manager },
   { key: 'staffing', re: /^#\/staffing(\?.*)?$/, href: '#/staffing', title: 'Resource calendar', icon: 'calendar-check', ws: 'manager', desc: 'Who is on which project, who is away and who has room', show: isMgr },
   { key: 'pipeline', re: /^#\/pipeline$/, href: '#/pipeline', title: 'Pipeline', icon: 'trending-up', ws: 'manager', desc: 'Opportunities by stage, value, probability, owner and next step', show: (me) => me.nav.pipeline },
   { key: 'commercial', re: /^#\/commercial(\?.*)?$/, href: '#/commercial', title: 'Commercial', icon: 'calculator', ws: 'manager', desc: 'Project budgets, burn, margin, billing milestones and cash — partners only', show: (me) => me.nav.commercial },
   { key: 'surveys', re: /^#\/surveys$/, href: '#/surveys', title: 'Surveys', icon: 'heart', ws: (me) => (me.nav.people ? 'manager' : 'mine'), area: 'company', desc: 'Anonymous team pulse and client feedback', show: (me) => me.nav.people },
   // ---- Admin workspace
+  { key: 'perf-setup', re: /^#\/admin\/performance$/, href: '#/admin/performance', title: 'Performance setup', icon: 'scale', ws: 'admin', desc: 'Policy, cycles and progress — the founders approve the policy', show: (me) => me.nav.perf_admin },
+  { key: 'calibration', re: /^#\/admin\/calibration$/, href: '#/admin/calibration', title: 'Calibration', icon: 'gauge', ws: 'admin', desc: 'Everyone side by side; both founders confirm each result before it is released', show: (me) => me.nav.perf_admin },
+  { key: 'compensation', re: /^#\/admin\/compensation$/, href: '#/admin/compensation', title: 'Compensation', icon: 'calculator', ws: 'admin', desc: 'Restricted: founders and named compensation administrators', show: (me) => me.nav.comp },
+  { key: 'pms-history', re: /^#\/admin\/pms-history$/, href: '#/admin/pms-history', title: 'PMS history import', icon: 'cloud-upload', ws: 'admin', desc: '2025 communicated outcomes and worksheets — dry run first', show: (me) => me.nav.hr && me.nav.comp },
+  { key: 'admin-records', re: /^#\/admin\/records(\?.*)?$/, href: '#/admin/records', title: 'Employee records', icon: 'lock', ws: 'admin', desc: 'Codes, titles in English and Arabic, grade, pay, ID, education, contacts and bank — admin only, encrypted', show: (me) => me.nav.hr },
   { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', ws: 'admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
   { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', ws: 'admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
   { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Review completion', icon: 'layout-dashboard', ws: 'admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },

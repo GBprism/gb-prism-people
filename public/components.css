@@ -1022,3 +1022,26 @@ a.agenda-item:hover { background: var(--color-subtle); }
 .bubble-replies { font-size: var(--text-xs); }
 .board-col > .board-col-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .board-col-head .col-count { flex: none; inline-size: auto; }
+
+/* employee records */
+.hr-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0; display: grid; gap: var(--space-3); }
+.hr-group legend { padding-inline: var(--space-2); font-weight: var(--weight-semibold); }
+.gross { display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-3); border-radius: var(--radius); background: var(--color-canvas); }
+[dir="rtl"].input, [dir="rtl"].textarea { font-family: var(--font-arabic); }
+
+/* performance */
+.perf-head { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
+.perf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.perf-list > li { display: grid; gap: 2px; padding: var(--space-3); border-radius: var(--radius); background: var(--color-canvas); }
+.perf-score { display: flex; gap: var(--space-3); align-items: baseline; }
+.perf-score strong { font-family: var(--font-heading); font-size: var(--text-4xl); line-height: 1; color: var(--color-primary); }
+.perf-score span { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.perf-preview { font-weight: var(--weight-semibold); color: var(--color-primary); }
+.gate-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.gate-list li { display: flex; gap: var(--space-2); align-items: baseline; font-size: var(--text-sm); }
+.gate-pass .icon { color: var(--color-success); } .gate-fail .icon { color: var(--color-danger); } .gate-pending .icon, .gate-not_set .icon { color: var(--color-text-3); }
+.cycle-row { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: center; padding: var(--space-3); border-radius: var(--radius); background: var(--color-canvas); }
+.flag-list { margin: 0; padding-inline-start: var(--space-4); font-size: var(--text-xs); color: var(--color-warning); }
+.mail-body { white-space: pre-wrap; font: var(--text-sm)/1.5 var(--font-sans); margin: 0; }
+.calib td, .calib th { white-space: nowrap; }
+button.link-row { all: unset; box-sizing: border-box; inline-size: 100%; cursor: pointer; }

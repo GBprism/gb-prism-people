@@ -10,6 +10,10 @@ import * as ai from '../domain/ai.js';
 import * as week from '../domain/myweek.js';
 import * as pchg from '../domain/projectchanges.js';
 import * as board from '../domain/board.js';
+import * as hr from '../domain/hrrecords.js';
+import * as perf2 from '../domain/perf/cycle.js';
+import * as pout from '../domain/perf/outcomes.js';
+import * as phist from '../imports/perf-history.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
 import * as lib from '../domain/library.js';
@@ -51,7 +55,7 @@ export function buildApi(db) {
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, google_slides: !!(process.env.GOOGLE_CLIENT_ID && process.env.BASE_URL), can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
       nav: { inbox: true, office: office.canOffice(db, actor), commercial: has(actor, 'partner'),
         pipeline: isOps(actor) || has(actor, 'partner') || !!db.prepare('SELECT 1 FROM proposals WHERE owner_user_id = ?').get(actor.id),
-        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), manager: has(actor, 'partner') || isOps(actor) || reviews > 0 || approvals > 0 || leads > 0, admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), hr: hr.canAdmin(actor), founder: perf2.isFounder(db, actor), comp: pout.compAccess(db, actor), perf_admin: perf2.isFounder(db, actor) || has(actor, 'admin'), manager: has(actor, 'partner') || isOps(actor) || reviews > 0 || approvals > 0 || leads > 0, admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // personal settings: email notifications on/off, walkthrough seen
@@ -175,7 +179,9 @@ export function buildApi(db) {
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
     for (const r of pchg.pendingFor(db, actor)) items.push({ type: 'project_change', id: r.id, kind: 'Project change', title: `${r.person} — ${r.summary}`, note: r.note, link: '#/manager', state: 'Waiting for you' });
     for (const i of board.myCardItems(db, actor)) items.push(i);
-    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist', card: 'Open task', card_review: 'Review', mention: 'Open' };
+    for (const i of hr.hrInboxItems(db, actor)) items.push(i);
+    for (const i of perf2.perfInboxItems(db, actor)) items.push(i);
+    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist', hr_record: 'Complete my record', perf: 'Open', card: 'Open task', card_review: 'Review', mention: 'Open' };
     return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: i.action || (scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review') }; });
   };
   r.get('/api/inbox', ({ actor, ctx }) => { const scope = q(ctx, 'scope'); const items = buildInbox(actor); return { items: scope ? items.filter((i) => i.scope === scope) : items }; });
@@ -215,6 +221,7 @@ export function buildApi(db) {
   r.post('/api/plans/:id/return', ({ actor, params, body }) => perf.returnPlan(db, actor, params.id, body));
   r.post('/api/plans/:id/items/:item/calibrate', ({ actor, params, body }) => perf.calibrateItem(db, actor, params.id, params.item, body));
   r.post('/api/plans/:id/items/:item/approve-na', ({ actor, params }) => perf.approveNa(db, actor, params.id, params.item));
+  r.post('/api/plans/:id/confirm', ({ actor, params }) => perf.confirmFinal(db, actor, params.id));
   r.post('/api/plans/:id/release', ({ actor, params, body }) => perf.release(db, actor, params.id, body));
   r.post('/api/plans/:id/acknowledge', ({ actor, params, body }) => perf.acknowledge(db, actor, params.id, body));
   r.post('/api/plans/:id/close', ({ actor, params }) => perf.closePlan(db, actor, params.id));
@@ -537,6 +544,66 @@ export function buildApi(db) {
   r.post('/api/messages/:id/pin/:mid', ({ actor, params, body }) => msg.pinMessage(db, actor, params.id, params.mid, body?.pin !== false));
 
   // ------------------------------------------------- engagement board --
+  // ------------------------------------------------ employee records (admin only) --
+  r.get('/api/hr-records', ({ actor }) => hr.listRecords(db, actor));
+  r.post('/api/hr-records/prefill', ({ actor }) => hr.prefillAll(db, actor));
+  r.post('/api/hr-records/requests', ({ actor, body }) => hr.requestData(db, actor, body || {}));
+  r.post('/api/hr-records/requests/:id/decide', ({ actor, params, body }) => hr.decideSubmission(db, actor, params.id, body || {}));
+  r.get('/api/hr-records/export', async ({ actor }) => ({ __raw: await hr.exportXlsx(db, actor), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename: `GB-employee-records-${todayIn()}.xlsx` }));
+  r.get('/api/hr-records/:user', ({ actor, params }) => hr.getRecord(db, actor, params.user));
+  r.patch('/api/hr-records/:user', ({ actor, params, body }) => hr.saveRecord(db, actor, params.user, body || {}));
+  r.get('/api/my-record', ({ actor }) => hr.myRecord(db, actor));
+  r.post('/api/my-record', ({ actor, body }) => hr.submitMyRecord(db, actor, body?.values || {}));
+  // -------------------------------------------- performance cycle (2027+) --
+  r.get('/api/performance/me', ({ actor }) => ({ ...perf2.myPerformance(db, actor), outcome: pout.myOutcome(db, actor) }));
+  r.get('/api/performance/team', ({ actor }) => perf2.teamPerformance(db, actor));
+  r.get('/api/performance/admin', ({ actor }) => perf2.adminView(db, actor));
+  r.post('/api/performance/policy', ({ actor, body }) => perf2.savePolicy(db, actor, body?.policy));
+  r.post('/api/performance/policy/approve', ({ actor }) => perf2.approvePolicy(db, actor));
+  r.post('/api/performance/cycles', ({ actor, body }) => perf2.launchCycle(db, actor, body || {}));
+  r.post('/api/performance/cycles/:id/stage', ({ actor, params, body }) => perf2.setCycleStage(db, actor, params.id, body?.stage));
+  r.get('/api/performance/reviews/:id', ({ actor, params }) => perf2.reviewView(db, actor, params.id));
+  r.post('/api/performance/reviews/:id/goals', ({ actor, params, body }) => perf2.saveGoals(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/goals/agree', ({ actor, params }) => perf2.agreeGoals(db, actor, params.id));
+  r.post('/api/performance/goal-changes/:id', ({ actor, params, body }) => perf2.decideGoalChange(db, actor, params.id, body || {}));
+  r.post('/api/performance/kickoffs', ({ actor, body }) => perf2.saveKickoff(db, actor, body || {}));
+  r.post('/api/performance/snapshots', ({ actor, body }) => perf2.requestSnapshot(db, actor, body || {}));
+  r.get('/api/performance/snapshots/:id', ({ actor, params }) => perf2.getSnapshot(db, actor, params.id));
+  r.post('/api/performance/snapshots/:id', ({ actor, params, body }) => perf2.saveSnapshot(db, actor, params.id, body || {}, { submit: !!body?.submit }));
+  r.post('/api/performance/snapshots/:id/respond', ({ actor, params, body }) => perf2.snapshotResponse(db, actor, params.id, body || {}));
+  r.post('/api/performance/snapshots/:id/reopen', ({ actor, params }) => perf2.reopenSnapshot(db, actor, params.id));
+  r.post('/api/performance/reviews/:id/coaching', ({ actor, params, body }) => perf2.saveCoaching(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/reflection', ({ actor, params, body }) => perf2.saveReflection(db, actor, params.id, body || {}, { submit: !!body?.submit }));
+  r.post('/api/performance/reviews/:id/ratings', ({ actor, params, body }) => perf2.saveRatings(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/submit', ({ actor, params }) => perf2.submitManager(db, actor, params.id));
+  r.post('/api/performance/reviews/:id/na/:dim', ({ actor, params }) => perf2.approveNa(db, actor, params.id, params.dim));
+  r.post('/api/performance/reviews/:id/calibrate', ({ actor, params, body }) => perf2.calibrate(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/calibrated', ({ actor, params, body }) => perf2.finishCalibration(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/approve', ({ actor, params }) => perf2.founderApprove(db, actor, params.id));
+  r.post('/api/performance/reviews/:id/release', ({ actor, params }) => perf2.releaseReview(db, actor, params.id));
+  r.post('/api/performance/reviews/:id/acknowledge', ({ actor, params, body }) => perf2.acknowledgeReview(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/amend', ({ actor, params, body }) => perf2.amendReview(db, actor, params.id, body || {}));
+  r.post('/api/performance/reviews/:id/note', ({ actor, params, body }) => perf2.saveLeadershipNote(db, actor, params.id, body?.note));
+  r.get('/api/promotions', ({ actor }) => pout.listPromotions(db, actor));
+  r.post('/api/promotions', ({ actor, body }) => pout.savePromotion(db, actor, null, body || {}));
+  r.patch('/api/promotions/:id', ({ actor, params, body }) => pout.savePromotion(db, actor, params.id, body || {}));
+  r.post('/api/promotions/:id/readiness', ({ actor, params, body }) => pout.setReadiness(db, actor, params.id, body || {}));
+  r.post('/api/promotions/:id/approve', ({ actor, params, body }) => pout.approvePromotion(db, actor, params.id, body || {}));
+  r.get('/api/compensation', ({ actor, ctx }) => pout.listComp(db, actor, { year: Number(q(ctx, 'year')) || null }));
+  r.get('/api/compensation/admins', ({ actor }) => pout.compAdmins(db, actor));
+  r.post('/api/compensation/admins', ({ actor, body }) => pout.compAdmins(db, actor, body?.ids || []));
+  r.get('/api/compensation/:id/message', ({ actor, params }) => pout.compMessage(db, actor, params.id));
+  r.post('/api/compensation', ({ actor, body }) => pout.saveCompProposal(db, actor, null, body || {}));
+  r.patch('/api/compensation/:id', ({ actor, params, body }) => pout.saveCompProposal(db, actor, params.id, body || {}));
+  r.post('/api/compensation/:id/approve', ({ actor, params }) => pout.approveComp(db, actor, params.id));
+  r.post('/api/compensation/:id/release', ({ actor, params }) => pout.releaseComp(db, actor, params.id));
+  r.post('/api/compensation/:id/acknowledge', ({ actor, params }) => pout.acknowledgeComp(db, actor, params.id));
+  r.get('/api/compensation/preview/:user/:year', ({ actor, params }) => pout.outcomePreview(db, actor, params.user, params.year));
+  r.get('/api/performance/imports', ({ actor }) => phist.listBatches(db, actor));
+  r.post('/api/performance/imports/outcomes', ({ actor, ctx, raw }) => phist.previewOutcomeCsv(db, actor, { filename: q(ctx, 'filename'), text: raw.toString('utf8') }), { raw: true });
+  r.post('/api/performance/imports/worksheet', async ({ actor, ctx, raw }) => phist.previewWorksheet(db, actor, { filename: q(ctx, 'filename'), buffer: raw, year: Number(q(ctx, 'year')) || 2025 }), { raw: true });
+  r.post('/api/performance/imports/:id/apply', ({ actor, params, body }) => phist.applyBatch(db, actor, params.id, body || {}));
+  r.post('/api/performance/imports/:id/discard', ({ actor, params }) => phist.discardBatch(db, actor, params.id));
   r.get('/api/projects/:id/board', ({ actor, params }) => board.boardView(db, actor, params.id));
   r.get('/api/projects/:id/people', ({ actor, params }) => { board.projectAccess(db, actor, params.id); return board.participants(db, params.id).map((id) => ({ id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(id).name })); });
   r.get('/api/projects/:id/discussion', ({ actor, params }) => msg.projectConversation(db, actor, params.id));

@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import { founders } from './perf/cycle.js';
 // Performance cycle workflow:
 //   draft_plan → approved_plan → self_assessment → manager_review →
 //   partner_calibration → released → acknowledged → closed
@@ -324,10 +326,34 @@ export function calibrateItem(db, actor, planId, itemId, { calibrated_rating, re
   });
 }
 
+/** What the founders confirm: the final ratings and weights. Any change afterwards needs a fresh confirmation. */
+function finalFingerprint(db, plan) {
+  const its = items(db, plan.id).map((i) => [i.id, i.na ? 'na' : i.calibrated_rating ?? i.manager_rating ?? null]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return crypto.createHash('sha256').update(JSON.stringify([plan.category_weights_json, its])).digest('hex');
+}
+export function founderConfirmations(db, plan) {
+  const fp = finalFingerprint(db, plan);
+  const got = db.prepare('SELECT founder_id, fingerprint, confirmed_at FROM plan_founder_confirmations WHERE plan_id = ?').all(plan.id);
+  const need = founders(db, plan.tenant_id);
+  const list = need.map((id) => { const g = got.find((x) => x.founder_id === id && x.fingerprint === fp); return { id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(id)?.name, confirmed_at: g?.confirmed_at || null }; });
+  return { needed: list, complete: list.length > 0 && list.every((x) => x.confirmed_at) };
+}
+/** Each founder confirms the final result before it can be released (Layan and Ghaith). */
+export function confirmFinal(db, actor, planId) {
+  const plan = getPlan(db, planId);
+  if (!founders(db, actor.tenantId).includes(actor.id)) throw forbid('Only the founders confirm results');
+  expectState(plan, 'partner_calibration');
+  db.prepare('INSERT INTO plan_founder_confirmations (plan_id, founder_id, fingerprint, confirmed_at) VALUES (?,?,?,?) ON CONFLICT(plan_id, founder_id) DO UPDATE SET fingerprint = excluded.fingerprint, confirmed_at = excluded.confirmed_at')
+    .run(planId, actor.id, finalFingerprint(db, plan), now());
+  audit(db, { tenantId: plan.tenant_id, actorId: actor.id, action: 'plan.founder_confirm', entity: 'plan', entityId: planId });
+  return founderConfirmations(db, plan);
+}
+
 export function release(db, actor, planId, { note } = {}) {
   return tx(db, () => {
     const plan = getPlan(db, planId);
     assertPlan(db, actor, plan, 'calibrate');
+    if (!founderConfirmations(db, plan).complete) throw bad('Both founders must confirm the final result before it is released');
     const { cfg } = cycleCfg(db, plan.cycle_id);
     const res = computeScore({ categoryWeights: P(plan.category_weights_json), items: items(db, planId), config: cfg, field: 'final' });
     if (res.status !== 'scored') throw bad('Final score cannot be calculated', [...res.errors.map((e) => e.message), ...res.missing.map((m) => `${m.title}: ${m.what} missing`)]);
@@ -490,6 +516,7 @@ export function planView(db, actor, planId) {
     category_weights: P(plan.category_weights_json, {}), rubric_version: plan.rubric_version, approved_revision: plan.approved_revision,
     basis_status: plan.basis_status, basis_note: plan.basis_note, scale: cfg.scale, scoring_status: cfg.status, row_version: plan.row_version,
     access: c, items: its,
+    founder_confirmations: plan.state === 'partner_calibration' && (c.relation === 'partner' || founders(db, actor.tenantId).includes(actor.id)) ? founderConfirmations(db, plan) : undefined,
     can_link_strategy: plan.state !== 'closed' && (isOps(actor) || ['self', 'reviewer', 'category_reviewer', 'partner'].includes(c.relation)),
     summary: { self: c.viewSelf ? summary.self : undefined, manager: c.viewManager ? summary.manager : undefined },
     revisions: db.prepare('SELECT revision, kind, approved_by, approved_at, note FROM plan_revisions WHERE plan_id = ? ORDER BY revision').all(planId),
