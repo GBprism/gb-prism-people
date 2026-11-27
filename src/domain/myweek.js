@@ -70,17 +70,18 @@ export function myWeek(db, actor, { personal = [], reviewNext = null, seatsToCon
   // ---- deliverables due soon on my projects (where I contribute, review or lead)
   for (const d of db.prepare(`SELECT d.id, d.title, d.due_date, p.id project_id, p.name project FROM deliverables d JOIN projects p ON p.id = d.project_id
       WHERE p.tenant_id = ? AND d.due_date BETWEEN ? AND ? AND d.status NOT IN ('accepted','done','cancelled','submitted')
+        AND d.owner_id IS NULL AND d.status != 'ready'
         AND (p.lead_user_id = ? OR d.qa_reviewer_id = ? OR EXISTS (SELECT 1 FROM contributions c WHERE c.deliverable_id = d.id AND c.user_id = ?))
       ORDER BY d.due_date LIMIT 3`).all(actor.tenantId, addDays(today, -14), addDays(today, 7), actor.id, actor.id, actor.id))
-    attention.push({ kind: 'deliverable', title: `Submit “${d.title}” for review`, detail: d.project, due: d.due_date, action: 'Open project', link: `#/project/${d.project_id}` });
+    attention.push({ kind: 'deliverable', title: `Submit “${d.title}” for review`, detail: d.project, due: d.due_date, action: 'Open task', link: `#/project/${d.project_id}/board?card=${d.id}` });
 
-  for (const i of personal) attention.push({ kind: i.type, title: i.title, detail: i.kind, due: i.due || null, action: i.action || 'Open', link: i.link });
+  for (const i of personal) attention.push({ kind: i.type, title: i.title, detail: i.detail ? `${i.kind} · ${i.detail}` : i.kind, due: i.due || null, action: i.action || 'Open', link: i.link });
   for (const a of db.prepare(`SELECT d.title, d.due_date, d.plan_id FROM development_actions d JOIN plans p ON p.id = d.plan_id WHERE d.user_id = ? AND p.state IN ('released','acknowledged','closed')
       AND d.status IN ('open','in_progress') AND d.due_date IS NOT NULL AND d.due_date <= ?`).all(actor.id, addDays(today, 30)))
     attention.push({ kind: 'development', title: a.title, detail: 'Development action', due: a.due_date, action: 'Open', link: '#/history' });
   if (seatsToConfirm) attention.push({ kind: 'ai', title: `Confirm ${seatsToConfirm} AI seat usage record${seatsToConfirm === 1 ? '' : 's'}`, detail: 'AI examples', action: 'Confirm', link: '#/ai' });
 
-  const rank = { onboarding: 0, review: 1, timesheet: 2, deliverable: 3 };
+  const rank = { onboarding: 0, card_review: 1, review: 2, card: 3, timesheet: 4, deliverable: 5, mention: 6 };
   attention.forEach((a) => { a.overdue = !!(a.due && a.due < today); });
   attention.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (rank[a.kind] ?? 5) - (rank[b.kind] ?? 5) || (a.due || '9999').localeCompare(b.due || '9999'));
 
@@ -92,9 +93,9 @@ export function myWeek(db, actor, { personal = [], reviewNext = null, seatsToCon
     week.push({ date: r.start_date < today ? today : r.start_date, end: r.end_date, kind: r.category === 'offsite' ? 'offsite' : 'leave', title: r.name, detail: r.state === 'approved' ? 'Approved' : 'Waiting for approval', link: '#/timeoff' });
   for (const [date, name] of holidaysFor(db, actor.tenantId, emp?.country || 'JO', today, horizon)) week.push({ date, kind: 'holiday', title: name, detail: 'Public holiday' });
   if (reviewNext?.due && reviewNext.due >= today && reviewNext.due <= horizon) week.push({ date: reviewNext.due, kind: 'deadline', title: reviewNext.label, detail: 'Review deadline', link: reviewNext.link });
-  for (const d of db.prepare(`SELECT d.title, d.milestone, d.due_date, p.id project_id, p.name project FROM deliverables d JOIN projects p ON p.id = d.project_id
+  for (const d of db.prepare(`SELECT d.id, d.title, d.milestone, d.due_date, p.id project_id, p.name project FROM deliverables d JOIN projects p ON p.id = d.project_id
       WHERE d.due_date BETWEEN ? AND ? AND d.project_id IN (${projects.map(() => '?').join(',') || "''"}) AND d.status NOT IN ('accepted','done','cancelled') ORDER BY d.due_date`).all(today, horizon, ...projects.map((p) => p.id)))
-    week.push({ date: d.due_date, kind: 'milestone', title: d.milestone || d.title, detail: d.project, link: `#/project/${d.project_id}` });
+    week.push({ date: d.due_date, kind: 'milestone', title: d.milestone || d.title, detail: d.project, link: `#/project/${d.project_id}/board?card=${d.id}` });
   for (const p of projects) if (p.end_date && p.end_date >= today && p.end_date <= horizon) week.push({ date: p.end_date, kind: 'milestone', title: 'Engagement ends', detail: p.name, link: `#/project/${p.id}` });
   const tsDue = lastDayOf(month);
   if (tsDue <= horizon && ['open', 'returned'].includes(tsStatus(month))) week.push({ date: tsDue, kind: 'deadline', title: `${monthName(month)} timesheet due`, detail: 'Timesheet', link: `#/timesheet?m=${month}` });

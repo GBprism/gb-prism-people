@@ -121,12 +121,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { notify } = await import('./domain/mailer.js');
   const { checkBurnAlerts } = await import('./domain/commercial.js');
   const { remindExpiringCertificates } = await import('./domain/lifecycle.js');
+  const { remindCardsDue } = await import('./domain/board.js');
   const transport = await smtpTransport();
   if (!transport) console.log('Email: SMTP_HOST not set — notifications stay in the outbox (Admin → Reminders).');
   const tick = async () => {
     for (const t of db.prepare('SELECT id FROM tenants').all()) {
       try {
-        remindExpiringDocuments(db, t.id); checkBurnAlerts(db, t.id, notify); remindExpiringCertificates(db, t.id, notify);
+        remindExpiringDocuments(db, t.id); checkBurnAlerts(db, t.id, notify); remindExpiringCertificates(db, t.id, notify); remindCardsDue(db, t.id);
         if (transport) await deliver(db, { tenantId: t.id, transport });
       } catch (e) { console.error('Email:', e.message); }
     }

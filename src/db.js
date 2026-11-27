@@ -519,6 +519,46 @@ export const MIGRATIONS = [
      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined','withdrawn')),
      decided_by TEXT, decided_at TEXT, decision_note TEXT, created_at TEXT NOT NULL);
    CREATE INDEX assignment_requests_open ON assignment_requests(tenant_id, status);`,
+
+  // ---- 022 engagement board (deliverables are the cards) and project discussion -----------------
+  `ALTER TABLE deliverables ADD COLUMN position REAL;
+   ALTER TABLE deliverables ADD COLUMN owner_id TEXT REFERENCES users(id);
+   ALTER TABLE deliverables ADD COLUMN description TEXT;
+   ALTER TABLE deliverables ADD COLUMN expected_output TEXT;
+   ALTER TABLE deliverables ADD COLUMN blocked_reason TEXT;
+   ALTER TABLE deliverables ADD COLUMN blocked_by TEXT;
+   ALTER TABLE deliverables ADD COLUMN blocked_at TEXT;
+   ALTER TABLE deliverables ADD COLUMN review_passed_by TEXT;
+   ALTER TABLE deliverables ADD COLUMN review_passed_at TEXT;
+   ALTER TABLE deliverables ADD COLUMN source_message_id TEXT;
+   ALTER TABLE deliverables ADD COLUMN created_by TEXT;
+   ALTER TABLE deliverables ADD COLUMN created_at TEXT;
+   ALTER TABLE deliverables ADD COLUMN updated_at TEXT;
+   ALTER TABLE deliverables ADD COLUMN rev INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE card_checklist (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES deliverables(id), text TEXT NOT NULL,
+     position INTEGER NOT NULL DEFAULT 0, done_by TEXT, done_at TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE card_links (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES deliverables(id), url TEXT NOT NULL, label TEXT,
+     added_by TEXT NOT NULL, created_at TEXT NOT NULL);
+   CREATE TABLE card_comments (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES deliverables(id), author_id TEXT NOT NULL REFERENCES users(id),
+     body TEXT NOT NULL, created_at TEXT NOT NULL);
+   CREATE TABLE card_activity (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES deliverables(id), actor_id TEXT, action TEXT NOT NULL,
+     detail TEXT, created_at TEXT NOT NULL);
+   CREATE TABLE mentions (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), by_id TEXT NOT NULL, project_id TEXT,
+     card_id TEXT, comment_id TEXT, conversation_id TEXT, message_id TEXT, created_at TEXT NOT NULL, seen_at TEXT);
+   ALTER TABLE messages ADD COLUMN parent_id TEXT;
+   ALTER TABLE messages ADD COLUMN pinned_by TEXT;
+   ALTER TABLE messages ADD COLUMN pinned_at TEXT;
+   CREATE INDEX card_checklist_card ON card_checklist(card_id, position);
+   CREATE INDEX card_comments_card ON card_comments(card_id, created_at);
+   CREATE INDEX card_activity_card ON card_activity(card_id, created_at);
+   CREATE INDEX mentions_user ON mentions(user_id, seen_at);
+   CREATE INDEX deliverables_owner ON deliverables(owner_id);
+   CREATE INDEX messages_parent ON messages(parent_id);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

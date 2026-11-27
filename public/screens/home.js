@@ -8,6 +8,7 @@ const KIND = {
   onboarding: ['Onboarding', 'user-plus'], review: ['Performance', 'clipboard-check'], timesheet: ['Timesheet', 'timer'], deliverable: ['Deliverable', 'file-check-2'],
   feedback: ['Feedback', 'messages-square'], survey: ['Team pulse', 'heart'], policy: ['Policy', 'book-open-check'], closeout: ['Close-out', 'lightbulb'],
   pipeline: ['Pipeline', 'trending-up'], offboarding: ['Leaving', 'log-out'], development: ['Development', 'target'], ai: ['AI', 'sparkles'],
+  card: ['Task', 'list-checks'], card_review: ['Review requested', 'eye'], mention: ['Mention', 'messages-square'],
 };
 const AGENDA = { leave: ['Leave', 'leave'], offsite: ['Off-site', 'leave'], holiday: ['Holiday', 'holiday'], deadline: ['Deadline', 'deadline'], milestone: ['Milestone', 'milestone'] };
 const d0 = (s) => new Date(`${s}T00:00:00`);

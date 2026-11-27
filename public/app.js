@@ -9,6 +9,8 @@ import { myProfileScreen, peopleScreen } from '/screens/people.js';
 import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
 import { approvalsScreen, teamReviewsScreen } from '/screens/manager.js';
 import { projectScreen } from '/screens/project.js';
+import { boardScreen } from '/screens/board.js';
+import { discussionScreen } from '/screens/discussion.js';
 import { requestsScreen } from '/screens/requests.js';
 import { projectsScreen } from '/screens/projects.js';
 import { historyScreen } from '/screens/history.js';
@@ -65,7 +67,8 @@ function errorBox(e) {
 let ME = null;
 const routes = [
   [/^#\/?$/, home], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
-  [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
+  [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/project\/([\w-]+)\/board(?:\?(.*))?$/, (id, query) => boardScreen({ api, me: ME, id, query })],
+  [/^#\/project\/([\w-]+)\/discussion(?:\?(.*))?$/, (id, query) => discussionScreen({ api, me: ME, id, query })], [/^#\/card\/([\w-]+)$/, openCardLink], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],
   [/^#\/profile(?:\?(.*))?$/, (query) => myProfileScreen({ api, query })], [/^#\/team$/, () => teamScreen({ api, me: ME })], [/^#\/library(?:\?(.*))?$/, (query) => libraryScreen({ api, query })],
   [/^#\/timesheet(?:\?(.*))?$/, (query) => timesheetScreen({ api, me: ME, query })], [/^#\/expenses(?:\?(.*))?$/, (query) => expensesScreen({ api, me: ME, query })],
@@ -118,6 +121,13 @@ async function render() {
   container.replaceChildren(banner, emptyState({ iconName: 'circle-help', title: 'Page not found', text: 'The link may be out of date.', action: uiButton('Go to Home', { variant: 'primary', iconName: 'house', href: '#/' }) }));
 }
 async function login() { document.body.replaceChildren(await signInScreen({ api })); }
+
+// a card link in a message or comment: open it on its project's board (only if the person may)
+async function openCardLink(id) {
+  const c = await api(`/api/cards/${encodeURIComponent(id)}`);
+  location.replace(`#/project/${c.project_id}/board?card=${c.id}`);
+  return document.createElement('div');
+}
 
 // ---------------------------------------------------------------- home --
 function home() { return homeScreen({ api, me: ME }); }
