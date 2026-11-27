@@ -1022,3 +1022,9 @@ a.agenda-item:hover { background: var(--color-subtle); }
 .bubble-replies { font-size: var(--text-xs); }
 .board-col > .board-col-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .board-col-head .col-count { flex: none; inline-size: auto; }
+
+/* employee records */
+.hr-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0; display: grid; gap: var(--space-3); }
+.hr-group legend { padding-inline: var(--space-2); font-weight: var(--weight-semibold); }
+.gross { display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-3); border-radius: var(--radius); background: var(--color-canvas); }
+[dir="rtl"].input, [dir="rtl"].textarea { font-family: var(--font-arabic); }

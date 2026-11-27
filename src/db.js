@@ -559,6 +559,17 @@ export const MIGRATIONS = [
    CREATE INDEX mentions_user ON mentions(user_id, seen_at);
    CREATE INDEX deliverables_owner ON deliverables(owner_id);
    CREATE INDEX messages_parent ON messages(parent_id);`,
+
+  // ---- 023 employee records (admin only). Everything but the code is encrypted at rest (HR_DATA_KEY). ----
+  `CREATE TABLE hr_records (
+     user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL, employee_code TEXT NOT NULL,
+     data_enc TEXT NOT NULL, updated_by TEXT, updated_at TEXT NOT NULL, UNIQUE(tenant_id, employee_code));
+   CREATE TABLE hr_record_requests (
+     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id),
+     status TEXT NOT NULL CHECK (status IN ('requested','submitted','applied','returned','cancelled')),
+     requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, submitted_enc TEXT, submitted_at TEXT,
+     decided_by TEXT, decided_at TEXT, note TEXT);
+   CREATE INDEX hr_requests_user ON hr_record_requests(user_id, status);`,
 ];
 
 export function openDb(file = process.env.DB_FILE || 'data/prism-people.db') {

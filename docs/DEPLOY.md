@@ -225,3 +225,36 @@ Nothing to configure: migration 022 runs on start. Each engagement under My Work
 - **Discussion.** The project's discussion is the same conversation as in Messages. It has replies in threads, @mentions (only of people on the engagement), #card links, *Create task from message* (the task links back to the message) and *Pin as a decision* (lead, partners, People Ops).
 - **Alerts.** Emails go out for an assignment, a review request, changes requested, a review passed, @mentions, and due tomorrow / overdue (once each). Routine moves and ordinary discussion send nothing; one action never emails the same person twice. Home shows your due tasks, the reviews asked of you and unread mentions, each linking to the exact card or thread.
 - **Access.** Boards, cards, comments, threads, search results, alerts and deep links are limited to the project's lead and current team, partners and People Ops. Anyone else gets "not found". Drive links open with the file's own Google sharing.
+
+## Employee records (admin only)
+
+Admin → **Employee records** is GB's HR master file. It holds:
+- **Job:** code, names and titles in English and Arabic, grade, department and division, dates, manager (from the org chart), employment type and contract end.
+- **Pay:** basic salary, mobile and transportation allowances; gross is calculated.
+- **Personal and identity:** birth date, gender, nationality, religion, marital status, national number, social security number and passport number.
+- **Education, contacts and bank:** education, address and contacts, emergency contact, bank name and IBAN.
+
+Only people with the **admin** role can open it — not partners, People Ops or managers. Everything except the employee code is **encrypted** on the server (AES-256-GCM). Every view, change and export is written to the audit log; the log records which fields changed, never the values.
+
+**One-time setup (required before first use).** Create the encryption key on the server:
+
+```bash
+echo "HR_DATA_KEY=$(openssl rand -base64 32)" | sudo tee -a /etc/gb-prism/env > /dev/null && sudo systemctl restart gb-prism
+```
+
+Then **keep a copy of the key somewhere safe outside the server** (for example a password manager only partners can open):
+
+```bash
+sudo grep HR_DATA_KEY /etc/gb-prism/env
+```
+
+Without the key, the records — including those in backups — cannot be read. Never change it once records exist.
+
+**Use.**
+1. **Create records from GB People.** This fills codes (GB-001… by joining date), names, titles in English and Arabic, departments, joining and probation dates, birth dates, education, certificates and a proposed grade.
+2. Add pay and confirm the grade.
+3. **Ask employees for their details.** Each person gets an email and a Home task, and fills only their personal fields under My Growth → Employee record. They never see pay or grade.
+4. Check what each person sent, tick what to apply, or return it with a note.
+5. **Download Excel** exports the full file.
+
+**Proposed grade** (A, B, C within each title): A in the first two years at GB, B from two years, C from four. Partners and directors have no grade. It is a starting point only: confirm or change it for each person.

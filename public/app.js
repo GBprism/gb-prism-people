@@ -8,6 +8,7 @@ import { signInScreen } from '/screens/signin.js';
 import { myProfileScreen, peopleScreen } from '/screens/people.js';
 import { timeoffScreen, requestScreen } from '/screens/timeoff.js';
 import { approvalsScreen, teamReviewsScreen } from '/screens/manager.js';
+import { recordsScreen, myRecordScreen } from '/screens/records.js';
 import { projectScreen } from '/screens/project.js';
 import { boardScreen } from '/screens/board.js';
 import { discussionScreen } from '/screens/discussion.js';
@@ -66,7 +67,7 @@ function errorBox(e) {
 // --------------------------------------------------------------- shell --
 let ME = null;
 const routes = [
-  [/^#\/?$/, home], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
+  [/^#\/?$/, home], [/^#\/admin\/records(?:\?(.*))?$/, (query) => recordsScreen({ api, query })], [/^#\/my-record$/, () => myRecordScreen({ api })], [/^#\/(?:inbox|manager)$/, () => approvalsScreen({ api, me: ME })], [/^#\/manager\/reviews$/, () => teamReviewsScreen({ api, me: ME })],
   [/^#\/project\/([\w-]+)$/, (id) => projectScreen({ api, me: ME, id })], [/^#\/project\/([\w-]+)\/board(?:\?(.*))?$/, (id, query) => boardScreen({ api, me: ME, id, query })],
   [/^#\/project\/([\w-]+)\/discussion(?:\?(.*))?$/, (id, query) => discussionScreen({ api, me: ME, id, query })], [/^#\/card\/([\w-]+)$/, openCardLink], [/^#\/requests$/, () => requestsScreen({ api, me: ME })], [/^#\/review\/(.+)$/, (id) => reviewScreen({ api, id })], [/^#\/timeoff$/, () => timeoffScreen({ api })], [/^#\/request\/(.+)$/, (id) => requestScreen({ api, id })],
   [/^#\/history$/, () => historyScreen({ api })], [/^#\/projects(?:\?(.*))?$/, (query) => projectsScreen({ api, me: ME, query })], [/^#\/admin(?:\/(\w+))?$/, admin], [/^#\/ai$/, () => aiExamplesScreen({ api })],

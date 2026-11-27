@@ -10,6 +10,7 @@ import * as ai from '../domain/ai.js';
 import * as week from '../domain/myweek.js';
 import * as pchg from '../domain/projectchanges.js';
 import * as board from '../domain/board.js';
+import * as hr from '../domain/hrrecords.js';
 import * as ntf from '../domain/notifications.js';
 import * as prof from '../domain/profiles.js';
 import * as lib from '../domain/library.js';
@@ -51,7 +52,7 @@ export function buildApi(db) {
     return { id: actor.id, name: actor.name, email: actor.email, roles: [...actor.roles], title: emp?.title, view_as: actor.viewAs || null, google_slides: !!(process.env.GOOGLE_CLIENT_ID && process.env.BASE_URL), can_view_as: (actor.realRoles || [...actor.roles]).some((r) => r !== 'employee'),
       nav: { inbox: true, office: office.canOffice(db, actor), commercial: has(actor, 'partner'),
         pipeline: isOps(actor) || has(actor, 'partner') || !!db.prepare('SELECT 1 FROM proposals WHERE owner_user_id = ?').get(actor.id),
-        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), manager: has(actor, 'partner') || isOps(actor) || reviews > 0 || approvals > 0 || leads > 0, admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
+        offboarding: isOps(actor) || has(actor, 'partner') || !!db.prepare("SELECT 1 FROM offboardings o LEFT JOIN employments e ON e.user_id = o.user_id AND e.effective_to IS NULL WHERE o.status = 'open' AND (o.user_id = ? OR e.manager_id = ?)").get(actor.id, actor.id), calibration: has(actor, 'partner'), hr: hr.canAdmin(actor), manager: has(actor, 'partner') || isOps(actor) || reviews > 0 || approvals > 0 || leads > 0, admin: isOps(actor), people: isOps(actor) || has(actor, 'partner') }, photo: prof.photoUrl(db, actor.id) };
   });
 
   // personal settings: email notifications on/off, walkthrough seen
@@ -175,7 +176,8 @@ export function buildApi(db) {
       items.push({ type: 'clarification', kind: 'Clarification', title: `${c.name}: ${c.question.slice(0, 80)}`, link: `#/review/${c.plan_id}`, state: 'Open' });
     for (const r of pchg.pendingFor(db, actor)) items.push({ type: 'project_change', id: r.id, kind: 'Project change', title: `${r.person} — ${r.summary}`, note: r.note, link: '#/manager', state: 'Waiting for you' });
     for (const i of board.myCardItems(db, actor)) items.push(i);
-    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist', card: 'Open task', card_review: 'Review', mention: 'Open' };
+    for (const i of hr.hrInboxItems(db, actor)) items.push(i);
+    const MINE = { feedback: 'Give feedback', survey: 'Answer the pulse', pipeline: 'Update the opportunity', closeout: 'Write the close-out', policy: 'Read and acknowledge', offboarding: 'Open checklist', hr_record: 'Complete my record', card: 'Open task', card_review: 'Review', mention: 'Open' };
     return items.map((i) => { const scope = i.scope || (MINE[i.type] ? 'mine' : 'team'); return { ...i, scope, action: i.action || (scope === 'mine' ? MINE[i.type] : i.type === 'request' ? 'Decide' : 'Review') }; });
   };
   r.get('/api/inbox', ({ actor, ctx }) => { const scope = q(ctx, 'scope'); const items = buildInbox(actor); return { items: scope ? items.filter((i) => i.scope === scope) : items }; });
@@ -537,6 +539,16 @@ export function buildApi(db) {
   r.post('/api/messages/:id/pin/:mid', ({ actor, params, body }) => msg.pinMessage(db, actor, params.id, params.mid, body?.pin !== false));
 
   // ------------------------------------------------- engagement board --
+  // ------------------------------------------------ employee records (admin only) --
+  r.get('/api/hr-records', ({ actor }) => hr.listRecords(db, actor));
+  r.post('/api/hr-records/prefill', ({ actor }) => hr.prefillAll(db, actor));
+  r.post('/api/hr-records/requests', ({ actor, body }) => hr.requestData(db, actor, body || {}));
+  r.post('/api/hr-records/requests/:id/decide', ({ actor, params, body }) => hr.decideSubmission(db, actor, params.id, body || {}));
+  r.get('/api/hr-records/export', async ({ actor }) => ({ __raw: await hr.exportXlsx(db, actor), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename: `GB-employee-records-${todayIn()}.xlsx` }));
+  r.get('/api/hr-records/:user', ({ actor, params }) => hr.getRecord(db, actor, params.user));
+  r.patch('/api/hr-records/:user', ({ actor, params, body }) => hr.saveRecord(db, actor, params.user, body || {}));
+  r.get('/api/my-record', ({ actor }) => hr.myRecord(db, actor));
+  r.post('/api/my-record', ({ actor, body }) => hr.submitMyRecord(db, actor, body?.values || {}));
   r.get('/api/projects/:id/board', ({ actor, params }) => board.boardView(db, actor, params.id));
   r.get('/api/projects/:id/people', ({ actor, params }) => { board.projectAccess(db, actor, params.id); return board.participants(db, params.id).map((id) => ({ id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(id).name })); });
   r.get('/api/projects/:id/discussion', ({ actor, params }) => msg.projectConversation(db, actor, params.id));

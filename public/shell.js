@@ -34,6 +34,7 @@ export const PAGES = [
   { key: 'review', re: /^#\/review\//, title: 'Review', icon: 'clipboard-list', area: 'growth', tabOf: 'history', desc: null },
   { key: 'training', re: /^#\/training$/, href: '#/training', title: 'Training', icon: 'award', area: 'growth', tab: 'Training', desc: 'Your courses, hours and certificates' },
   { key: 'profile', re: /^#\/profile(\?.*)?$/, href: '#/profile', title: 'My profile', icon: 'id-card', area: 'growth', tab: 'Profile & CV', desc: 'Your employment details, benefits and CV — visible to you, People Ops and partners only' },
+  { key: 'my-record', re: /^#\/my-record$/, href: '#/my-record', title: 'My employee record', icon: 'lock', area: 'growth', tab: 'Employee record', desc: 'Your personal, ID, education, contact and bank details — seen only by the GB admin' },
   { key: 'ai', re: /^#\/ai$/, href: '#/ai', title: 'AI examples', icon: 'sparkles', area: 'growth', tab: 'AI examples', desc: 'Examples of AI-assisted work and seat confirmations' },
   // ---- Company
   { key: 'team', re: /^#\/team$/, href: '#/team', title: 'Team', icon: 'users', area: 'company', tab: 'Team', desc: 'Who is who at GB Advisory: roles, experience and past projects' },
@@ -52,6 +53,7 @@ export const PAGES = [
   { key: 'commercial', re: /^#\/commercial(\?.*)?$/, href: '#/commercial', title: 'Commercial', icon: 'calculator', ws: 'manager', desc: 'Project budgets, burn, margin, billing milestones and cash — partners only', show: (me) => me.nav.commercial },
   { key: 'surveys', re: /^#\/surveys$/, href: '#/surveys', title: 'Surveys', icon: 'heart', ws: (me) => (me.nav.people ? 'manager' : 'mine'), area: 'company', desc: 'Anonymous team pulse and client feedback', show: (me) => me.nav.people },
   // ---- Admin workspace
+  { key: 'admin-records', re: /^#\/admin\/records(\?.*)?$/, href: '#/admin/records', title: 'Employee records', icon: 'lock', ws: 'admin', desc: 'Codes, titles in English and Arabic, grade, pay, ID, education, contacts and bank — admin only, encrypted', show: (me) => me.nav.hr },
   { key: 'people', re: /^#\/people$/, href: '#/people', title: 'People', icon: 'contact', ws: 'admin', desc: 'Employee profiles, benefits status and what still needs confirming', show: (me) => me.nav.people },
   { key: 'reports', re: /^#\/reports$/, href: '#/reports', title: 'Reports', icon: 'gauge', ws: 'admin', desc: 'People, time, money, projects and reviews at a glance', show: (me) => me.nav.people },
   { key: 'admin-dashboard', re: /^#\/admin(\/dashboard)?$/, href: '#/admin/dashboard', title: 'Review completion', icon: 'layout-dashboard', ws: 'admin', desc: 'Review progress across the cycle', show: (me) => me.nav.admin },
