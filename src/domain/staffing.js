@@ -63,9 +63,13 @@ export function calendar(db, actor, { from, weeks = 12 } = {}) {
       const tentative = items.filter((x) => x.tentative).reduce((s, x) => s + x.pct, 0);
       return { week: w.start, available, booked, tentative, items, over: booked > available + 5, free: available - booked >= 50 };
     });
-    return { id: u.id, name: u.name, title: u.title, weeks: cells, utilisation: seeUtil || u.id === actor.id ? utilisation(db, T, u) : undefined };
+    // day-level detail for the week view: what each block is and when; away days carry no reason
+    const spans = [...mine.map((a) => ({ project: a.name, project_id: a.project_id, assignment_id: a.id, start: a.start_date || a.p_start || first, end: a.end_date || a.p_end || last, pct: a.allocation_pct, estimated: a.allocation_pct == null })),
+      ...extra.map((b) => ({ project: b.project || b.proposal || b.label, project_id: b.project_id, booking_id: b.id, start: b.start_date, end: b.end_date, pct: b.pct, tentative: b.status === 'tentative', proposal: !!b.proposal_id }))];
+    const away = [...lv].filter(([d, share]) => share > 0 && d >= first && d <= last).map(([date, share]) => ({ date, share }));
+    return { id: u.id, name: u.name, title: u.title, weeks: cells, spans, away, utilisation: seeUtil || u.id === actor.id ? utilisation(db, T, u) : undefined };
   });
-  return { weeks: ws.map((w, i) => ({ ...w, workdays: workdays[i].length })), people: rows, canEdit: editor(actor),
+  return { weeks: ws.map((w, i) => ({ ...w, workdays: workdays[i].length, days: workdays[i] })), holidays: Object.fromEntries(hol), workweek: settings.workweek, people: rows, canEdit: editor(actor),
     summary: { over: rows.filter((r) => r.weeks.slice(0, 4).some((c) => c.over)).map((r) => r.name), bench: rows.filter((r) => r.weeks.slice(0, 2).every((c) => c.available && c.free)).map((r) => r.name) } };
 }
 

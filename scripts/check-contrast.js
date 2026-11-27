@@ -11,6 +11,8 @@ const PAIRS = [
   ['color-on-primary', 'color-primary', 4.5], ['color-primary', 'color-surface', 4.5], ['color-primary', 'color-primary-tint', 4.5], ['color-on-primary', 'color-primary-hover', 4.5],
   ['color-success', 'color-success-bg', 4.5], ['color-warning', 'color-warning-bg', 4.5], ['color-danger', 'color-danger-bg', 4.5], ['color-info', 'color-info-bg', 4.5], ['color-neutral', 'color-neutral-bg', 4.5],
   ['color-danger', 'color-surface', 4.5], ['color-text-on-dark', 'gb-midnight', 4.5], ['color-text-on-dark-2', 'gb-midnight', 4.5], ['gb-cyan', 'gb-midnight', 3], ['color-focus', 'color-surface', 3], ['color-control-border', 'color-surface', 3], ['color-control-border', 'color-canvas', 3],
+  ['color-text-on-dark', 'gb-ink', 4.5], ['color-text-on-dark-2', 'gb-ink', 4.5], ['color-text-on-dark', 'gb-blue-select', 4.5], ['sidebar-group-label', 'gb-ink', 4.5],
+  ...[1, 2, 3, 4, 5, 6, 'leave'].map((n) => [`block-${n}-text`, `block-${n}-bg`, 4.5]),
 ];
 let bad = 0;
 for (const [fg, bg, min] of PAIRS) {

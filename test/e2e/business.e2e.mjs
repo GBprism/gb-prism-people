@@ -33,7 +33,7 @@ test('business screens end to end', { skip: !chromium && 'playwright not install
   try {
     const pt = await pageAs(SYN.partner);
     // commercial: set a budget
-    await pt.click('a.nav-item[href="#/commercial"]'); await pt.waitForSelector('.burn-cell');
+    await pt.click('a.ws-link[title="Manager"]'); await pt.click('a.nav-item[href="#/commercial"]'); await pt.waitForSelector('.burn-cell');
     await pt.getByRole('button', { name: /Set budget|Open/ }).first().click();
     await pt.fill('#cb-fee', '20000'); await pt.fill('#cb-hours', '120');
     await pt.getByRole('button', { name: 'Save budget' }).click(); await pt.waitForSelector('text=Budget saved');
@@ -50,7 +50,8 @@ test('business screens end to end', { skip: !chromium && 'playwright not install
     // surveys: open a pulse
     await pt.goto(`${base}#/surveys`); await pt.getByRole('button', { name: 'Open a team pulse' }).click(); await pt.waitForSelector('text=Pulse opened');
     // resource calendar renders
-    await pt.goto(`${base}#/staffing`); await pt.waitForSelector('.staff-cell');
+    await pt.goto(`${base}#/staffing`); await pt.waitForSelector('.wk-grid');
+    await pt.getByRole('button', { name: '12 weeks' }).click(); await pt.waitForSelector('.staff-cell');
     // employee: answers the pulse from the inbox, adds training
     const emp = await pageAs(SYN.emp);
     await emp.goto(`${base}#/surveys`); await emp.getByRole('button', { name: /Answer/ }).click();
@@ -58,7 +59,8 @@ test('business screens end to end', { skip: !chromium && 'playwright not install
     await emp.getByRole('button', { name: 'Send my answers' }).click(); await emp.waitForSelector('text=You answered');
     await emp.goto(`${base}#/training`); await emp.getByRole('button', { name: 'Add training' }).click();
     await emp.fill('#tr-title', 'Power BI'); await emp.fill('#tr-h', '12'); await emp.getByRole('button', { name: 'Save' }).click(); await emp.waitForSelector('text=Power BI');
-    assert.equal(await emp.locator('a.nav-item[href="#/commercial"]').count(), 0, 'employees never see Commercial');
+    assert.equal(await emp.locator('a[href="#/commercial"]').count(), 0, 'employees never see Commercial');
+    assert.equal(await emp.locator('.ws-switch').count(), 0, 'employees have no workspace switcher');
     // the lead writes the close-out from the inbox link
     const lead = await pageAs(SYN.lead);
     const e1 = db.prepare("SELECT id FROM engagements WHERE key = 'e1'").get().id;
